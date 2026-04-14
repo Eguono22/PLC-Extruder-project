@@ -147,6 +147,31 @@ python run_app.py
 
 Then open `http://127.0.0.1:8000`.
 
+### Runtime configuration
+
+The application reads environment variables for runtime behavior:
+
+- `EXTRUDER_APP_HOST`
+- `EXTRUDER_APP_PORT`
+- `EXTRUDER_PLC_MODE` with values `simulation`, `opcua`, or `modbus`
+- `EXTRUDER_SCAN_INTERVAL_S`
+- `EXTRUDER_PERSIST_LOGS`
+- `EXTRUDER_LOG_DIR`
+- `EXTRUDER_OPCUA_ENDPOINT`
+- `EXTRUDER_MODBUS_ENDPOINT`
+
+Use `.env.example` as the starting template for local or container runs.
+
+### Docker run
+
+Create a local env file from `.env.example`, then run:
+
+```bash
+docker compose up --build
+```
+
+The operator panel will be available at `http://127.0.0.1:8000`.
+
 ### API endpoints
 
 - `GET /api/status`
@@ -160,6 +185,12 @@ Then open `http://127.0.0.1:8000`.
 - `POST /api/commands/reset`
 - `POST /api/commands/emergency-stop`
 - `POST /api/commands/acknowledge-alarms`
+
+### Current integration status
+
+- `simulation` mode is implemented and backed by the in-repo extruder simulator
+- `opcua` and `modbus` modes are scaffolded and ready for protocol-specific implementation
+- runtime telemetry is written to `runtime_logs/` when log persistence is enabled
 
 ---
 

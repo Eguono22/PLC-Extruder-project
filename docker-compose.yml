@@ -1,0 +1,11 @@
+services:
+  extruder-app:
+    build: .
+    container_name: extruder-app
+    ports:
+      - "8000:8000"
+    env_file:
+      - .env
+    volumes:
+      - ./runtime_logs:/app/runtime_logs
+    restart: unless-stopped

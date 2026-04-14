@@ -9,6 +9,7 @@ from fastapi import FastAPI
 from fastapi.responses import FileResponse
 from fastapi.staticfiles import StaticFiles
 
+from extruder_app.factory import create_service
 from extruder_app.models import (
     ActiveRecipeUpdate,
     AlarmItem,
@@ -18,7 +19,7 @@ from extruder_app.models import (
     RecipeDefinition,
     TrendPoint,
 )
-from extruder_app.service import ExtruderApplicationService
+from extruder_app.settings import AppSettings
 
 
 BASE_DIR = Path(__file__).resolve().parent
@@ -32,7 +33,8 @@ app = FastAPI(
         "extruder line."
     ),
 )
-service = ExtruderApplicationService()
+settings = AppSettings.from_env()
+service = create_service(settings)
 
 if STATIC_DIR.exists():
     app.mount("/static", StaticFiles(directory=STATIC_DIR), name="static")
@@ -55,7 +57,11 @@ def operator_panel() -> FileResponse:
 
 @app.get("/api/health")
 def health() -> dict:
-    return {"ok": True, "plc_mode": service.plc_mode}
+    return {
+        "ok": True,
+        "plc_mode": service.plc_mode,
+        "scan_interval_s": settings.scan_interval_s,
+    }
 
 
 @app.get("/api/status", response_model=MachineStatus)
