@@ -24,3 +24,6 @@ env/
 .vscode/
 *.swp
 *.swo
+
+# Runtime data
+runtime_logs/

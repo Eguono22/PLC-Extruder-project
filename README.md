@@ -28,7 +28,16 @@ extruder.  The platform covers every stage of the extrusion process:
 PLC-Extruder-project/
 ├── config.py                      # Process parameters & safety limits
 ├── main.py                        # CLI entry point / demo simulation
+├── run_app.py                     # FastAPI operator-panel entry point
 ├── requirements.txt
+├── extruder_app/
+│   ├── api.py                     # FastAPI app and operator endpoints
+│   ├── service.py                 # Machine application service
+│   ├── plc_adapters.py            # Simulation / OPC UA / Modbus adapter layer
+│   ├── logging_store.py           # Telemetry and event logging
+│   ├── models.py                  # API request/response models
+│   └── static/
+│       └── index.html             # Browser operator panel
 ├── plc_extruder/
 │   ├── controller.py              # State machine: IDLE → STARTUP → RUNNING → SHUTDOWN
 │   ├── components/
@@ -43,6 +52,7 @@ PLC-Extruder-project/
 └── tests/
     ├── test_pid.py
     ├── test_alarms.py
+    ├── test_app_service.py
     ├── test_feeder.py
     ├── test_heater.py
     ├── test_motor.py
@@ -68,7 +78,7 @@ Any state ──safety fault / E-Stop──► EMERGENCY_STOP ──reset()─�
 
 ## Quick Start
 
-**Requirements:** Python >= 3.8 (no external packages needed).
+**Requirements:** Python >= 3.8
 
 ### Run the demo simulation
 
@@ -105,6 +115,51 @@ ctrl.stop()
 ```bash
 python -m pytest tests/ -v
 ```
+
+---
+
+## Application Layer
+
+The repository now includes a first MVP application layer for an
+extruder line:
+
+- FastAPI backend for control, status, alarms, recipes, and analytics
+- simulation-backed PLC adapter so the app can run before real PLC
+  integration is finished
+- OPC UA and Modbus adapter scaffolding for future plant connectivity
+- browser operator panel for temperature zones, screw speed, alarms, and
+  live process metrics
+- telemetry and event logging into `runtime_logs/`
+
+### Run the operator app
+
+Install dependencies:
+
+```bash
+python -m pip install -r requirements.txt
+```
+
+Start the app:
+
+```bash
+python run_app.py
+```
+
+Then open `http://127.0.0.1:8000`.
+
+### API endpoints
+
+- `GET /api/status`
+- `GET /api/recipes`
+- `PUT /api/recipes/active`
+- `GET /api/alarms`
+- `GET /api/trends/process`
+- `GET /api/analytics/summary`
+- `POST /api/commands/start`
+- `POST /api/commands/stop`
+- `POST /api/commands/reset`
+- `POST /api/commands/emergency-stop`
+- `POST /api/commands/acknowledge-alarms`
 
 ---
 

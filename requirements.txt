@@ -1,2 +1,4 @@
-# No external dependencies required.
-# The platform uses Python standard-library modules only (Python >= 3.8).
+# Core simulation platform works with the Python standard library.
+# The application layer adds FastAPI for the operator API and dashboard.
+fastapi>=0.115,<1.0
+uvicorn>=0.30,<1.0
