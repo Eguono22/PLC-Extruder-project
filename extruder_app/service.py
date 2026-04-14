@@ -58,6 +58,7 @@ class ExtruderApplicationService:
         self._stop_event.set()
         if self._thread and self._thread.is_alive():
             self._thread.join(timeout=1.0)
+        self._adapter.close()
         self._telemetry.record_event("app_stopped", {"plc_mode": self.plc_mode})
 
     def _run_loop(self) -> None:
@@ -185,6 +186,14 @@ class ExtruderApplicationService:
     def analytics_summary(self) -> Dict[str, object]:
         """Return aggregate process analytics."""
         return self._telemetry.analytics_summary()
+
+    def connection_status(self) -> Dict[str, object]:
+        """Return PLC adapter diagnostics."""
+        return self._adapter.diagnostics()
+
+    def browse_connection_nodes(self, node_id: Optional[str] = None) -> List[Dict[str, str]]:
+        """Browse PLC nodes for commissioning."""
+        return self._adapter.browse_nodes(node_id=node_id)
 
     def recent_events(self, limit: int = 100) -> List[Dict[str, object]]:
         """Return recent application/control events."""

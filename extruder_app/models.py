@@ -56,6 +56,26 @@ class EventItem(BaseModel):
     payload: Dict[str, object]
 
 
+class ConnectionStatus(BaseModel):
+    """PLC adapter connectivity and diagnostics snapshot."""
+
+    plc_mode: str
+    connected: bool
+    endpoint: str
+    node_prefix: str = ""
+    last_error: str = ""
+    last_poll_succeeded: bool = False
+
+
+class OpcUaBrowseItem(BaseModel):
+    """Single OPC UA browse result item."""
+
+    node_id: str
+    browse_name: str
+    display_name: str
+    node_class: str
+
+
 class CommandResponse(BaseModel):
     """Simple response envelope for control commands."""
 

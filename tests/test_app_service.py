@@ -62,3 +62,13 @@ class TestExtruderApplicationService:
         assert report["report_name"] == "Production Report"
         assert "avg_throughput_kg_h" in report
         assert "event_count" in report
+
+    def test_connection_status_returns_adapter_diagnostics(self):
+        service = _make_service()
+        diagnostics = service.connection_status()
+        assert diagnostics["plc_mode"] == "simulation"
+        assert diagnostics["connected"] is True
+
+    def test_browse_connection_nodes_uses_adapter_support(self):
+        service = _make_service()
+        assert service.browse_connection_nodes() == []

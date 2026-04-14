@@ -2,3 +2,4 @@
 # The application layer adds FastAPI for the operator API and dashboard.
 fastapi>=0.115,<1.0
 uvicorn>=0.30,<1.0
+asyncua>=1.1,<2.0

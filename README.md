@@ -129,6 +129,8 @@ extruder line:
 - OPC UA and Modbus adapter scaffolding for future plant connectivity
 - browser operator panel for temperature zones, screw speed, alarms, and
   live process metrics
+- built-in commissioning panel for PLC connection diagnostics and OPC UA
+  node browsing
 - telemetry and event logging into `runtime_logs/`
 
 ### Run the operator app
@@ -158,6 +160,8 @@ The application reads environment variables for runtime behavior:
 - `EXTRUDER_PERSIST_LOGS`
 - `EXTRUDER_LOG_DIR`
 - `EXTRUDER_OPCUA_ENDPOINT`
+- `EXTRUDER_OPCUA_NODE_PREFIX`
+- `EXTRUDER_OPCUA_TIMEOUT_S`
 - `EXTRUDER_MODBUS_ENDPOINT`
 
 Use `.env.example` as the starting template for local or container runs.
@@ -175,6 +179,8 @@ The operator panel will be available at `http://127.0.0.1:8000`.
 ### API endpoints
 
 - `GET /api/status`
+- `GET /api/connection`
+- `GET /api/connection/browse`
 - `GET /api/recipes`
 - `PUT /api/recipes/active`
 - `GET /api/alarms`
@@ -192,8 +198,46 @@ The operator panel will be available at `http://127.0.0.1:8000`.
 ### Current integration status
 
 - `simulation` mode is implemented and backed by the in-repo extruder simulator
-- `opcua` and `modbus` modes are scaffolded and ready for protocol-specific implementation
+- `opcua` mode now reads and writes TwinCAT-style `gExtruder*` tags through OPC UA
+- `modbus` mode remains scaffolded for protocol-specific implementation
 - runtime telemetry is written to `runtime_logs/` when log persistence is enabled
+
+### OPC UA mapping
+
+The OPC UA adapter expects TwinCAT-style exported symbols under the configured
+node prefix, for example:
+
+- `gExtruderCmd.Start`
+- `gExtruderCmd.Stop`
+- `gExtruderCmd.Reset`
+- `gExtruderCmd.EmergencyStop`
+- `gExtruderCmd.RecipeFeedRateKgH`
+- `gExtruderCmd.RecipeScrewRpm`
+- `gExtruderStatus.State`
+- `gExtruderStatus.RunTime_s`
+- `gExtruderStatus.ScanNumber`
+- `gExtruderStatus.ActiveRecipeName`
+- `gExtruderAI.Zone1Temp_C` through `gExtruderAI.Zone4Temp_C`
+- `gExtruderAI.DieTemp_C`
+- `gExtruderAI.MeltPressure_bar`
+- `gExtruderAI.MotorRpm`
+- `gExtruderAI.MotorCurrent_A`
+- `gExtruderAI.FeederRateKgH`
+- `gExtruderAI.HopperLevelPct`
+
+The default OPC UA node prefix is `ns=2;s=` and can be overridden with
+`EXTRUDER_OPCUA_NODE_PREFIX`.
+
+Use `GET /api/connection` during commissioning to see the current PLC mode,
+endpoint, node prefix, connection status, and the last adapter error.
+
+Use `GET /api/connection/browse` to inspect children below an OPC UA node.
+By default it browses the TwinCAT-style `gExtruderStatus` node under the
+configured symbol prefix.
+
+The browser dashboard now includes a commissioning section that shows live
+connection health, endpoint details, the configured node prefix, the last
+adapter error, and browse results from the selected OPC UA node.
 
 ---
 

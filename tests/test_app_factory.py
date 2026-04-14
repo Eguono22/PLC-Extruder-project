@@ -19,3 +19,10 @@ class TestApplicationFactory:
             assert "Unsupported EXTRUDER_PLC_MODE" in str(exc)
         else:
             raise AssertionError("Expected invalid PLC mode to raise ValueError")
+
+    def test_simulation_adapter_reports_diagnostics(self):
+        settings = AppSettings(plc_mode="simulation")
+        adapter = create_adapter(settings)
+        diagnostics = adapter.diagnostics()
+        assert diagnostics["plc_mode"] == "simulation"
+        assert diagnostics["connected"] is True

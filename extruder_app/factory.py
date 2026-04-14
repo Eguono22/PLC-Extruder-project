@@ -13,7 +13,11 @@ def create_adapter(settings: AppSettings):
     if settings.plc_mode == "simulation":
         return SimulationPlcAdapter()
     if settings.plc_mode == "opcua":
-        return OpcUaPlcAdapter(settings.opcua_endpoint)
+        return OpcUaPlcAdapter(
+            endpoint=settings.opcua_endpoint,
+            node_prefix=settings.opcua_node_prefix,
+            timeout_s=settings.opcua_timeout_s,
+        )
     if settings.plc_mode == "modbus":
         return ModbusPlcAdapter(settings.modbus_endpoint)
     raise ValueError(

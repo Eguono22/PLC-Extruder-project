@@ -16,8 +16,10 @@ from extruder_app.models import (
     AlarmItem,
     AnalyticsSummary,
     CommandResponse,
+    ConnectionStatus,
     EventItem,
     MachineStatus,
+    OpcUaBrowseItem,
     ProductionReport,
     RecipeDefinition,
     TrendPoint,
@@ -65,6 +67,17 @@ def health() -> dict:
         "plc_mode": service.plc_mode,
         "scan_interval_s": settings.scan_interval_s,
     }
+
+
+@app.get("/api/connection", response_model=ConnectionStatus)
+def get_connection_status() -> ConnectionStatus:
+    return ConnectionStatus.model_validate(service.connection_status())
+
+
+@app.get("/api/connection/browse", response_model=List[OpcUaBrowseItem])
+def browse_connection_nodes(node_id: str = "") -> List[OpcUaBrowseItem]:
+    items = service.browse_connection_nodes(node_id=node_id or None)
+    return [OpcUaBrowseItem.model_validate(item) for item in items]
 
 
 @app.get("/api/status", response_model=MachineStatus)

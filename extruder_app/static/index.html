@@ -38,6 +38,7 @@
     }
     .hero { grid-template-columns: 1.4fr 1fr; }
     .grid { grid-template-columns: 1.2fr 1fr; }
+    .full { display: grid; gap: 16px; margin-bottom: 16px; }
     .panel {
       background: rgba(255, 250, 242, 0.9);
       border: 1px solid var(--line);
@@ -73,6 +74,15 @@
       border-radius: 999px;
       padding: 12px 16px;
       font-size: 0.95rem;
+    }
+    input {
+      width: 100%;
+      border: 1px solid var(--line);
+      border-radius: 16px;
+      padding: 12px 14px;
+      font-size: 0.95rem;
+      background: white;
+      color: var(--ink);
     }
     button {
       cursor: pointer;
@@ -147,8 +157,54 @@
       color: var(--muted);
       margin-top: 14px;
     }
+    .commission-grid {
+      display: grid;
+      grid-template-columns: 0.9fr 1.1fr;
+      gap: 16px;
+      align-items: start;
+    }
+    .status-chip {
+      display: inline-flex;
+      align-items: center;
+      gap: 8px;
+      border-radius: 999px;
+      padding: 10px 14px;
+      background: rgba(15, 118, 110, 0.12);
+      color: var(--brand);
+      font-weight: 700;
+      margin-bottom: 12px;
+    }
+    .status-chip.offline {
+      background: rgba(185, 28, 28, 0.12);
+      color: var(--danger);
+    }
+    .browse-controls {
+      display: grid;
+      grid-template-columns: 1fr auto;
+      gap: 10px;
+      margin-top: 14px;
+      margin-bottom: 14px;
+    }
+    .browse-list {
+      display: grid;
+      gap: 10px;
+      max-height: 280px;
+      overflow: auto;
+    }
+    .browse-item {
+      background: white;
+      border: 1px solid var(--line);
+      border-radius: 18px;
+      padding: 14px 16px;
+    }
+    .mono {
+      font-family: "Consolas", "SFMono-Regular", monospace;
+      font-size: 0.86rem;
+      overflow-wrap: anywhere;
+    }
     @media (max-width: 900px) {
       .hero, .grid { grid-template-columns: 1fr; }
+      .commission-grid { grid-template-columns: 1fr; }
     }
   </style>
 </head>
@@ -215,6 +271,29 @@
         <div class="eyebrow">Alarm Panel</div>
         <h2>Active Alarms</h2>
         <div class="alarm-list" id="alarmList"></div>
+      </div>
+    </section>
+
+    <section class="full">
+      <div class="panel">
+        <div class="eyebrow">Commissioning</div>
+        <h2>PLC Connection</h2>
+        <div class="commission-grid">
+          <div>
+            <div class="status-chip" id="connectionChip">Checking PLC link...</div>
+            <div class="row"><span>Endpoint</span><strong class="mono" id="connectionEndpoint">-</strong></div>
+            <div class="row"><span>Node prefix</span><strong class="mono" id="connectionPrefix">-</strong></div>
+            <div class="row"><span>Last poll</span><strong id="connectionPoll">-</strong></div>
+            <div class="row"><span>Last error</span><strong id="connectionError">-</strong></div>
+          </div>
+          <div>
+            <div class="browse-controls">
+              <input id="browseNodeId" placeholder="Optional OPC UA node id, for example ns=2;s=gExtruderStatus">
+              <button class="secondary" onclick="refreshBrowse()">Browse</button>
+            </div>
+            <div class="browse-list" id="browseList"></div>
+          </div>
+        </div>
       </div>
     </section>
   </div>
@@ -299,11 +378,46 @@
       `).join('');
     }
 
+    function renderConnection(connection) {
+      const chip = document.getElementById('connectionChip');
+      const isOnline = Boolean(connection.connected);
+      chip.textContent = isOnline ? 'PLC reachable' : 'PLC disconnected';
+      chip.className = isOnline ? 'status-chip' : 'status-chip offline';
+      document.getElementById('connectionEndpoint').textContent = connection.endpoint || 'Not configured';
+      document.getElementById('connectionPrefix').textContent = connection.node_prefix || 'n/a';
+      document.getElementById('connectionPoll').textContent = connection.last_poll_succeeded ? 'Successful' : 'No successful poll yet';
+      document.getElementById('connectionError').textContent = connection.last_error || 'No adapter error';
+    }
+
+    function renderBrowse(items) {
+      const container = document.getElementById('browseList');
+      if (!items.length) {
+        container.innerHTML = '<div class="browse-item"><strong>No child nodes returned</strong><div class="muted">Check the node id or verify the PLC symbol is exposed through OPC UA.</div></div>';
+        return;
+      }
+      container.innerHTML = items.map(item => `
+        <div class="browse-item">
+          <strong>${item.display_name || item.browse_name}</strong>
+          <div class="muted">${item.node_class}</div>
+          <div class="mono">${item.node_id}</div>
+        </div>
+      `).join('');
+    }
+
+    async function refreshBrowse() {
+      const nodeId = document.getElementById('browseNodeId').value.trim();
+      const url = nodeId ? `/api/connection/browse?node_id=${encodeURIComponent(nodeId)}` : '/api/connection/browse';
+      const items = await fetchJson(url);
+      renderBrowse(items);
+      setStatus(nodeId ? `Browsed node: ${nodeId}` : 'Browsed default PLC node');
+    }
+
     async function refresh() {
-      const [status, alarms, analytics] = await Promise.all([
+      const [status, alarms, analytics, connection] = await Promise.all([
         fetchJson('/api/status'),
         fetchJson('/api/alarms'),
-        fetchJson('/api/analytics/summary')
+        fetchJson('/api/analytics/summary'),
+        fetchJson('/api/connection')
       ]);
 
       document.getElementById('stateValue').textContent = status.state;
@@ -327,11 +441,13 @@
       updateBar('hopperBar', status.feeder.hopper_level_pct, 100);
       renderZones(status);
       renderAlarms(alarms);
+      renderConnection(connection);
     }
 
     async function boot() {
       await loadRecipes();
       await refresh();
+      await refreshBrowse();
       setInterval(refresh, 1000);
     }
 
