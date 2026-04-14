@@ -58,6 +58,62 @@ class TelemetryStore:
         """Return the most recent control events."""
         return list(self._events)[-limit:]
 
+    def production_report(
+        self,
+        report_name: str,
+        plc_mode: str,
+        active_recipe_name: str,
+        sample_limit: int = 500,
+        event_limit: int = 200,
+    ) -> Dict[str, object]:
+        """Return an aggregated production report for recent activity."""
+        samples = self.recent_samples(limit=sample_limit)
+        events = self.recent_events(limit=event_limit)
+        if not samples:
+            return {
+                "report_name": report_name,
+                "generated_at": time.time(),
+                "window_samples": 0,
+                "plc_mode": plc_mode,
+                "active_recipe_name": active_recipe_name,
+                "runtime_s": 0.0,
+                "avg_throughput_kg_h": 0.0,
+                "peak_throughput_kg_h": 0.0,
+                "max_pressure_bar": 0.0,
+                "avg_motor_current_a": 0.0,
+                "avg_die_temp_c": 0.0,
+                "avg_hopper_level_pct": 0.0,
+                "event_count": len(events),
+                "active_alarm_summary": "No data",
+            }
+
+        def _avg(values: List[float]) -> float:
+            return sum(values) / len(values) if values else 0.0
+
+        throughput = [float(s["die"]["throughput_kg_h"]) for s in samples]
+        pressure = [float(s["die"]["melt_pressure_bar"]) for s in samples]
+        motor_current = [float(s["motor"]["current_a"]) for s in samples]
+        die_temp = [float(s["die"]["temperature_c"]) for s in samples]
+        hopper_level = [float(s["feeder"]["hopper_level_pct"]) for s in samples]
+        latest = samples[-1]
+
+        return {
+            "report_name": report_name,
+            "generated_at": time.time(),
+            "window_samples": len(samples),
+            "plc_mode": plc_mode,
+            "active_recipe_name": active_recipe_name,
+            "runtime_s": float(latest["run_time_s"]),
+            "avg_throughput_kg_h": round(_avg(throughput), 2),
+            "peak_throughput_kg_h": round(max(throughput), 2),
+            "max_pressure_bar": round(max(pressure), 2),
+            "avg_motor_current_a": round(_avg(motor_current), 2),
+            "avg_die_temp_c": round(_avg(die_temp), 2),
+            "avg_hopper_level_pct": round(_avg(hopper_level), 2),
+            "event_count": len(events),
+            "active_alarm_summary": str(latest["alarms"]),
+        }
+
     def analytics_summary(self) -> Dict[str, object]:
         """Return derived analytics from the recent sample window."""
         samples = list(self._samples)

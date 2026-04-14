@@ -48,3 +48,17 @@ class TestExtruderApplicationService:
         service = _make_service()
         accepted = service.start_machine()
         assert accepted is True
+
+    def test_recent_events_include_control_commands(self):
+        service = _make_service()
+        service.start_machine()
+        events = service.recent_events(limit=10)
+        assert any(event["type"] == "start_command" for event in events)
+
+    def test_production_report_returns_expected_shape(self):
+        service = _make_service()
+        service.poll_once()
+        report = service.production_report()
+        assert report["report_name"] == "Production Report"
+        assert "avg_throughput_kg_h" in report
+        assert "event_count" in report

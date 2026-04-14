@@ -178,8 +178,11 @@ The operator panel will be available at `http://127.0.0.1:8000`.
 - `GET /api/recipes`
 - `PUT /api/recipes/active`
 - `GET /api/alarms`
+- `GET /api/events`
 - `GET /api/trends/process`
 - `GET /api/analytics/summary`
+- `GET /api/reports/production`
+- `GET /api/reports/production.csv`
 - `POST /api/commands/start`
 - `POST /api/commands/stop`
 - `POST /api/commands/reset`

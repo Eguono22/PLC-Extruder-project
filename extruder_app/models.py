@@ -48,6 +48,14 @@ class AlarmItem(BaseModel):
     acknowledged: bool
 
 
+class EventItem(BaseModel):
+    """Serializable application or control event."""
+
+    ts: float
+    type: str
+    payload: Dict[str, object]
+
+
 class CommandResponse(BaseModel):
     """Simple response envelope for control commands."""
 
@@ -79,6 +87,25 @@ class AnalyticsSummary(BaseModel):
     runtime_s: float
     state: str
     active_alarm_count: int
+    active_alarm_summary: str
+
+
+class ProductionReport(BaseModel):
+    """Aggregated production report for a recent sample window."""
+
+    report_name: str
+    generated_at: float
+    window_samples: int
+    plc_mode: str
+    active_recipe_name: str
+    runtime_s: float
+    avg_throughput_kg_h: float
+    peak_throughput_kg_h: float
+    max_pressure_bar: float
+    avg_motor_current_a: float
+    avg_die_temp_c: float
+    avg_hopper_level_pct: float
+    event_count: int
     active_alarm_summary: str
 
 

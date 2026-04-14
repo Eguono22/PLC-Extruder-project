@@ -7,6 +7,7 @@ from typing import List
 
 from fastapi import FastAPI
 from fastapi.responses import FileResponse
+from fastapi.responses import PlainTextResponse
 from fastapi.staticfiles import StaticFiles
 
 from extruder_app.factory import create_service
@@ -15,7 +16,9 @@ from extruder_app.models import (
     AlarmItem,
     AnalyticsSummary,
     CommandResponse,
+    EventItem,
     MachineStatus,
+    ProductionReport,
     RecipeDefinition,
     TrendPoint,
 )
@@ -92,6 +95,39 @@ def get_alarms() -> List[AlarmItem]:
 @app.get("/api/analytics/summary", response_model=AnalyticsSummary)
 def get_analytics_summary() -> AnalyticsSummary:
     return AnalyticsSummary.model_validate(service.analytics_summary())
+
+
+@app.get("/api/events", response_model=List[EventItem])
+def get_events(limit: int = 100) -> List[EventItem]:
+    return [EventItem.model_validate(item) for item in service.recent_events(limit=limit)]
+
+
+@app.get("/api/reports/production", response_model=ProductionReport)
+def get_production_report(
+    report_name: str = "Production Report",
+    sample_limit: int = 500,
+    event_limit: int = 200,
+) -> ProductionReport:
+    return ProductionReport.model_validate(
+        service.production_report(
+            report_name=report_name,
+            sample_limit=sample_limit,
+            event_limit=event_limit,
+        )
+    )
+
+
+@app.get("/api/reports/production.csv", response_class=PlainTextResponse)
+def get_production_report_csv(
+    report_name: str = "Production Report",
+    sample_limit: int = 500,
+    event_limit: int = 200,
+) -> str:
+    return service.production_report_csv(
+        report_name=report_name,
+        sample_limit=sample_limit,
+        event_limit=event_limit,
+    )
 
 
 @app.get("/api/trends/process", response_model=List[TrendPoint])

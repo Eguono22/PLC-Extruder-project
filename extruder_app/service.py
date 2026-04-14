@@ -186,6 +186,43 @@ class ExtruderApplicationService:
         """Return aggregate process analytics."""
         return self._telemetry.analytics_summary()
 
+    def recent_events(self, limit: int = 100) -> List[Dict[str, object]]:
+        """Return recent application/control events."""
+        return self._telemetry.recent_events(limit=limit)
+
+    def production_report(
+        self,
+        report_name: str = "Production Report",
+        sample_limit: int = 500,
+        event_limit: int = 200,
+    ) -> Dict[str, object]:
+        """Return a production report derived from recent history."""
+        return self._telemetry.production_report(
+            report_name=report_name,
+            plc_mode=self.plc_mode,
+            active_recipe_name=self._active_recipe.name,
+            sample_limit=sample_limit,
+            event_limit=event_limit,
+        )
+
+    def production_report_csv(
+        self,
+        report_name: str = "Production Report",
+        sample_limit: int = 500,
+        event_limit: int = 200,
+    ) -> str:
+        """Return a CSV export for recent production history."""
+        report = self.production_report(
+            report_name=report_name,
+            sample_limit=sample_limit,
+            event_limit=event_limit,
+        )
+        lines = ["field,value"]
+        for key, value in report.items():
+            safe_value = str(value).replace(",", ";")
+            lines.append(f"{key},{safe_value}")
+        return "\n".join(lines)
+
     @staticmethod
     def _build_default_recipes() -> Dict[str, RecipeDefinition]:
         return {
