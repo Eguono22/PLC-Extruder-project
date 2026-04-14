@@ -139,6 +139,13 @@ class TestSafetySystem:
         safety.reset_all()
         assert not safety.is_estop_active
 
+    def test_reset_all_resets_watchdog_counter(self):
+        safety, heater, motor, die, feeder, _ = _make_components()
+        for _ in range(safety._watchdog_limit + 2):
+            safety.evaluate(heater, motor, die, feeder)
+        safety.reset_all()
+        assert safety.status_dict()["scan_count"] == 0
+
     # ------------------------------------------------------------------
     # Status dict / repr
     # ------------------------------------------------------------------

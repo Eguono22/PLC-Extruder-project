@@ -135,6 +135,18 @@ class TestControllerRunningToShutdown:
                 break
         assert ctrl.motor.actual_rpm < 1.0
 
+    def test_start_resets_run_time_for_new_cycle(self):
+        ctrl = self._run_to_running()
+        ctrl.scan()
+        assert ctrl.run_time_s > 0.0
+        ctrl.stop()
+        for _ in range(10000):
+            ctrl.scan()
+            if ctrl.state == ControllerState.IDLE:
+                break
+        ctrl.start()
+        assert ctrl.run_time_s == pytest.approx(0.0)
+
 
 class TestControllerSafety:
 

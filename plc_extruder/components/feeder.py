@@ -94,6 +94,7 @@ class MaterialFeeder:
         """Clear the feeder fault flag and acknowledge related alarms."""
         self._fault = False
         self._alarms.clear_alarm(self._ALM_FEEDER_FAULT)
+        self._alarms.clear_alarm(self._ALM_EMPTY_HOPPER)
 
     # ------------------------------------------------------------------
     # Simulation update

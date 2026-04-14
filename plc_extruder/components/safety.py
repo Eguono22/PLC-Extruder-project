@@ -103,6 +103,7 @@ class SafetySystem:
         self._estop_hw = False
         self._estop_sw = False
         self._state = SafetyState.SAFE
+        self._scan_count = 0
         for code in (
             self._ALM_ESTOP_HW,
             self._ALM_ESTOP_SW,

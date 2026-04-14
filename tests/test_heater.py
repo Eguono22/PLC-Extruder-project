@@ -159,6 +159,10 @@ class TestBarrelHeater:
         # At 20 °C, zones are far below their setpoints
         assert not heater.all_at_setpoint
 
+    def test_all_at_setpoint_false_when_all_zones_disabled(self):
+        heater, _ = self._heater()
+        assert not heater.all_at_setpoint
+
     def test_all_at_setpoint_when_at_temp(self):
         heater, _ = self._heater()
         heater.enable_all()

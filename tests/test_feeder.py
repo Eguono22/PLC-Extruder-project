@@ -143,6 +143,15 @@ class TestMaterialFeeder:
         feeder.reset_fault()
         assert not feeder.has_fault
 
+    def test_fault_reset_clears_empty_hopper_alarm(self):
+        feeder, alarms = _make_feeder(hopper_pct=0.5)
+        feeder.start()
+        feeder.set_rate(50.0)
+        for _ in range(50):
+            feeder.update(config.SCAN_CYCLE_S)
+        feeder.reset_fault()
+        assert not alarms.has_active("FEEDER_EMPTY_HOPPER")
+
     # ------------------------------------------------------------------
     # Status dict
     # ------------------------------------------------------------------

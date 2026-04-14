@@ -108,6 +108,41 @@ python -m pytest tests/ -v
 
 ---
 
+## PLC Structured Text
+
+A vendor-neutral IEC 61131-3 Structured Text version of the top-level
+controller state machine is available at `plc/ExtruderController.st`.
+
+It translates the orchestration logic from `plc_extruder/controller.py`
+into a PLC-friendly function block:
+
+- `FB_ExtruderController` manages `IDLE`, `STARTUP`, `RUNNING`,
+  `SHUTDOWN`, and `EMERGENCY_STOP`
+- recipe setpoints are clamped and exposed as maintained outputs
+- start, stop, reset, and emergency stop commands are handled as
+  edge-triggered operator inputs
+- heater, die, feeder, and motor control are exposed as PLC outputs so
+  they can be wired to separate function blocks or real I/O
+
+This file is intentionally generic so it can be adapted for platforms
+such as Siemens TIA Portal, CODESYS, Beckhoff TwinCAT, or Rockwell
+Structured Text with only minor syntax adjustments.
+
+Additional PLC blocks are also provided:
+
+- `plc/FB_HeatingZone.st`
+- `plc/FB_DieZone.st`
+- `plc/FB_MaterialFeeder.st`
+- `plc/FB_ExtrusionMotor.st`
+- `plc/FB_SafetySystem.st`
+- `plc/ExtruderCellExample.st`
+
+Together these give you a full PLC-oriented baseline that mirrors the
+Python architecture: component function blocks plus a top-level
+sequencing controller.
+
+---
+
 ## Key Design Decisions
 
 ### PID Controller (`plc_extruder/utils/pid.py`)

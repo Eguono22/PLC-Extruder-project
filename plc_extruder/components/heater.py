@@ -291,9 +291,8 @@ class BarrelHeater:
     @property
     def all_at_setpoint(self) -> bool:
         """True if every enabled zone is within its temperature tolerance."""
-        return all(
-            z.at_setpoint for z in self._zones if z.is_enabled
-        )
+        enabled_zones = [z for z in self._zones if z.is_enabled]
+        return bool(enabled_zones) and all(z.at_setpoint for z in enabled_zones)
 
     @property
     def temperatures(self) -> List[float]:

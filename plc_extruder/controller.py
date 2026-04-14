@@ -100,6 +100,7 @@ class ExtruderController:
         """
         if self._state != ControllerState.IDLE:
             return False
+        self._run_time_s = 0.0
         self._transition_to(ControllerState.STARTUP)
         return True
 
