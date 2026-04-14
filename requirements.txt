@@ -1,0 +1,2 @@
+# No external dependencies required.
+# The platform uses Python standard-library modules only (Python >= 3.8).
