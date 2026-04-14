@@ -143,7 +143,16 @@ sequencing controller.
 
 For Beckhoff specifically, there is now a TwinCAT-oriented set of files
 under `plc/twincat/`, including strict DUT enums, a global config list,
-an `R_TRIG`-based controller, and a TwinCAT wiring example program.
+an `R_TRIG`-based controller, structured I/O/HMI tags, and a TwinCAT
+wiring example program.
+
+The TwinCAT layer now includes a fuller PLC application pattern:
+
+- machine modes such as `OFF`, `MANUAL`, `AUTO`, and `MAINTENANCE`
+- built-in recipes plus custom recipe overrides
+- permissive evaluation for start readiness
+- alarm aggregation into a compact summary word and counts
+- stable global tag structures for HMI, ADS, and EtherCAT mapping
 
 ---
 
