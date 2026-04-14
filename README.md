@@ -141,6 +141,10 @@ Together these give you a full PLC-oriented baseline that mirrors the
 Python architecture: component function blocks plus a top-level
 sequencing controller.
 
+For Beckhoff specifically, there is now a TwinCAT-oriented set of files
+under `plc/twincat/`, including strict DUT enums, a global config list,
+an `R_TRIG`-based controller, and a TwinCAT wiring example program.
+
 ---
 
 ## Key Design Decisions
