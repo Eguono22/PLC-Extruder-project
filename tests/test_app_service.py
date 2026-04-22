@@ -1,5 +1,8 @@
 """Tests for the application-layer machine service."""
 
+import csv
+import io
+
 from extruder_app.logging_store import TelemetryStore
 from extruder_app.models import ActiveRecipeUpdate, ZoneSetpoints
 from extruder_app.plc_adapters import SimulationPlcAdapter
@@ -62,6 +65,13 @@ class TestExtruderApplicationService:
         assert report["report_name"] == "Production Report"
         assert "avg_throughput_kg_h" in report
         assert "event_count" in report
+
+    def test_production_report_csv_uses_valid_csv_escaping(self):
+        service = _make_service()
+        csv_text = service.production_report_csv(report_name="Trial, Shift 1")
+        rows = list(csv.reader(io.StringIO(csv_text)))
+        assert rows[0] == ["field", "value"]
+        assert ["report_name", "Trial, Shift 1"] in rows
 
     def test_connection_status_returns_adapter_diagnostics(self):
         service = _make_service()

@@ -432,24 +432,36 @@ class OpcUaPlcAdapter(BasePlcAdapter):
             self._last_poll_succeeded = False
             self._connected = False
 
+    def _run_command(self, coroutine) -> bool:
+        try:
+            self._run(coroutine)
+            self._last_error = ""
+            return True
+        except Exception as exc:
+            close = getattr(coroutine, "close", None)
+            if callable(close):
+                close()
+            self._last_error = str(exc)
+            self._last_poll_succeeded = False
+            self._connected = False
+            return False
+
     def start(self) -> bool:
-        self._run(self._pulse_bool(self._node("gExtruderCmd.Start")))
-        return True
+        return self._run_command(self._pulse_bool(self._node("gExtruderCmd.Start")))
 
     def stop(self) -> bool:
-        self._run(self._pulse_bool(self._node("gExtruderCmd.Stop")))
-        return True
+        return self._run_command(self._pulse_bool(self._node("gExtruderCmd.Stop")))
 
     def reset(self) -> bool:
-        self._run(self._pulse_bool(self._node("gExtruderCmd.Reset")))
-        return True
+        return self._run_command(self._pulse_bool(self._node("gExtruderCmd.Reset")))
 
     def emergency_stop(self) -> None:
-        self._run(self._pulse_bool(self._node("gExtruderCmd.EmergencyStop")))
+        self._run_command(self._pulse_bool(self._node("gExtruderCmd.EmergencyStop")))
 
     def acknowledge_alarms(self) -> int:
-        self._run(self._pulse_bool(self._node("gExtruderCmd.Reset")))
-        return len(self._cached_alarms)
+        if self._run_command(self._pulse_bool(self._node("gExtruderCmd.Reset"))):
+            return len(self._cached_alarms)
+        return 0
 
     def set_recipe(
         self,
@@ -474,7 +486,7 @@ class OpcUaPlcAdapter(BasePlcAdapter):
         if die_setpoint_c is not None:
             writes.append((self._node("gExtruderCmd.DieSetpoint_C"), die_setpoint_c))
 
-        self._run(self._write_values(writes))
+        self._run_command(self._write_values(writes))
 
     def status_snapshot(self) -> Dict[str, object]:
         if self._last_snapshot["state"] == "UNKNOWN":
@@ -516,32 +528,64 @@ class ModbusPlcAdapter(BasePlcAdapter):
 
     def __init__(self, endpoint: str) -> None:
         self.endpoint = endpoint
-
-    def _unimplemented(self) -> None:
-        raise NotImplementedError(
-            "Modbus integration is scaffolded but not yet implemented in this repo."
-        )
+        self._last_error = "Modbus adapter not implemented"
+        self._last_poll_succeeded = False
+        self._snapshot = {
+            "state": "UNAVAILABLE",
+            "scan_number": 0,
+            "run_time_s": 0.0,
+            "recipe": {"feed_rate_kg_h": 0.0, "screw_rpm": 0.0},
+            "safety": {"state": "UNKNOWN"},
+            "alarms": "Modbus adapter not implemented",
+            "heater": {
+                "all_at_setpoint": False,
+                "zones": [
+                    {
+                        "zone": zone,
+                        "temperature_c": 0.0,
+                        "setpoint_c": 0.0,
+                        "heater_output_pct": 0.0,
+                        "at_setpoint": False,
+                    }
+                    for zone in range(1, 5)
+                ],
+            },
+            "motor": {
+                "actual_rpm": 0.0,
+                "setpoint_rpm": 0.0,
+                "current_a": 0.0,
+                "torque_pct": 0.0,
+            },
+            "feeder": {
+                "actual_rate_kg_h": 0.0,
+                "setpoint_kg_h": 0.0,
+                "hopper_level_pct": 0.0,
+            },
+            "die": {
+                "temperature_c": 0.0,
+                "setpoint_c": 0.0,
+                "melt_pressure_bar": 0.0,
+                "throughput_kg_h": 0.0,
+            },
+            "active_alarms": [],
+        }
 
     def scan(self) -> None:
-        self._unimplemented()
+        self._last_poll_succeeded = False
 
     def start(self) -> bool:
-        self._unimplemented()
         return False
 
     def stop(self) -> bool:
-        self._unimplemented()
         return False
 
     def reset(self) -> bool:
-        self._unimplemented()
         return False
 
     def emergency_stop(self) -> None:
-        self._unimplemented()
+        return None
 
     def acknowledge_alarms(self) -> int:
-        self._unimplemented()
         return 0
 
     def set_recipe(
@@ -551,14 +595,22 @@ class ModbusPlcAdapter(BasePlcAdapter):
         zone_setpoints_c: Optional[List[float]] = None,
         die_setpoint_c: Optional[float] = None,
     ) -> None:
-        self._unimplemented()
+        zone_setpoints_c = zone_setpoints_c or []
+        self._snapshot["recipe"] = {
+            "feed_rate_kg_h": float(feed_rate_kg_h),
+            "screw_rpm": float(screw_rpm),
+        }
+        self._snapshot["feeder"]["setpoint_kg_h"] = float(feed_rate_kg_h)
+        self._snapshot["motor"]["setpoint_rpm"] = float(screw_rpm)
+        for idx, temp in enumerate(zone_setpoints_c[:4]):
+            self._snapshot["heater"]["zones"][idx]["setpoint_c"] = float(temp)
+        if die_setpoint_c is not None:
+            self._snapshot["die"]["setpoint_c"] = float(die_setpoint_c)
 
     def status_snapshot(self) -> Dict[str, object]:
-        self._unimplemented()
-        return {}
+        return self._snapshot
 
     def active_alarms(self) -> List[Alarm]:
-        self._unimplemented()
         return []
 
     def diagnostics(self) -> Dict[str, object]:

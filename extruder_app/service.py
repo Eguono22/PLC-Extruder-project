@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+import csv
+import io
 import threading
 import time
 from typing import Dict, List, Optional
@@ -148,7 +150,7 @@ class ExtruderApplicationService:
         with self._lock:
             snapshot = self._adapter.status_snapshot()
             snapshot["plc_mode"] = self.plc_mode
-            snapshot["active_recipe"] = self._active_recipe.dict()
+            snapshot["active_recipe"] = self._active_recipe.model_dump()
             return snapshot
 
     def active_alarms(self) -> List[Dict[str, object]]:
@@ -226,11 +228,12 @@ class ExtruderApplicationService:
             sample_limit=sample_limit,
             event_limit=event_limit,
         )
-        lines = ["field,value"]
+        buffer = io.StringIO()
+        writer = csv.writer(buffer, lineterminator="\n")
+        writer.writerow(["field", "value"])
         for key, value in report.items():
-            safe_value = str(value).replace(",", ";")
-            lines.append(f"{key},{safe_value}")
-        return "\n".join(lines)
+            writer.writerow([key, value])
+        return buffer.getvalue().rstrip("\n")
 
     @staticmethod
     def _build_default_recipes() -> Dict[str, RecipeDefinition]:

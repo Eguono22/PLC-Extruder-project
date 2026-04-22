@@ -113,6 +113,7 @@ ctrl.stop()
 ### Run the tests
 
 ```bash
+python -m pip install -r requirements-dev.txt
 python -m pytest tests/ -v
 ```
 
@@ -200,6 +201,8 @@ The operator panel will be available at `http://127.0.0.1:8000`.
 - `simulation` mode is implemented and backed by the in-repo extruder simulator
 - `opcua` mode now reads and writes TwinCAT-style `gExtruder*` tags through OPC UA
 - `modbus` mode remains scaffolded for protocol-specific implementation
+- `modbus` mode now boots the app in a safe commissioning placeholder state
+  so the UI and diagnostics remain available while protocol work is pending
 - runtime telemetry is written to `runtime_logs/` when log persistence is enabled
 
 ### OPC UA mapping

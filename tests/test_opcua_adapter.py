@@ -79,3 +79,21 @@ class TestOpcUaAdapterHelpers:
 
         assert items == [{"node_id": "ns=2;s=gExtruderStatus"}]
         assert called["node_id"] == "ns=2;s=gExtruderStatus"
+
+    def test_command_failure_returns_false_and_records_error(self):
+        adapter = OpcUaPlcAdapter.__new__(OpcUaPlcAdapter)
+        adapter.node_prefix = "ns=2;s="
+        adapter._last_poll_succeeded = True
+        adapter._connected = True
+
+        def fake_run(_value):
+            raise RuntimeError("PLC offline")
+
+        adapter._run = fake_run
+
+        ok = adapter.start()
+
+        assert ok is False
+        assert adapter._connected is False
+        assert adapter._last_poll_succeeded is False
+        assert adapter._last_error == "PLC offline"

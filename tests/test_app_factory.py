@@ -1,7 +1,7 @@
 """Tests for application factory and settings helpers."""
 
-from extruder_app.factory import create_adapter
-from extruder_app.plc_adapters import SimulationPlcAdapter
+from extruder_app.factory import create_adapter, create_service
+from extruder_app.plc_adapters import ModbusPlcAdapter, SimulationPlcAdapter
 from extruder_app.settings import AppSettings
 
 
@@ -26,3 +26,18 @@ class TestApplicationFactory:
         diagnostics = adapter.diagnostics()
         assert diagnostics["plc_mode"] == "simulation"
         assert diagnostics["connected"] is True
+
+    def test_modbus_mode_returns_placeholder_adapter(self):
+        settings = AppSettings(plc_mode="modbus")
+        adapter = create_adapter(settings)
+        assert isinstance(adapter, ModbusPlcAdapter)
+        diagnostics = adapter.diagnostics()
+        assert diagnostics["connected"] is False
+        assert "not implemented" in diagnostics["last_error"].lower()
+
+    def test_modbus_service_can_be_created_for_commissioning(self):
+        settings = AppSettings(plc_mode="modbus")
+        service = create_service(settings)
+        status = service.machine_status()
+        assert status["plc_mode"] == "modbus"
+        assert status["state"] == "UNAVAILABLE"
