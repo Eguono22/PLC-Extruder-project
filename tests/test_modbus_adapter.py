@@ -9,6 +9,12 @@ class TestModbusAdapterHelpers:
         assert host == "192.168.0.50"
         assert port == 1502
 
+    def test_coil_address_uses_configured_base(self):
+        adapter = ModbusPlcAdapter.__new__(ModbusPlcAdapter)
+        adapter.command_coil_base = 20
+        assert adapter._coil_address(adapter.START_COIL_OFFSET) == 20
+        assert adapter._coil_address(adapter.ACK_ALARMS_COIL_OFFSET) == 24
+
     def test_build_snapshot_maps_register_values(self):
         adapter = ModbusPlcAdapter.__new__(ModbusPlcAdapter)
         adapter._cached_alarms = []

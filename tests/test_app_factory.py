@@ -28,9 +28,17 @@ class TestApplicationFactory:
         assert diagnostics["connected"] is True
 
     def test_modbus_mode_returns_placeholder_adapter(self):
-        settings = AppSettings(plc_mode="modbus")
+        settings = AppSettings(
+            plc_mode="modbus",
+            modbus_command_coil_base=10,
+            modbus_status_base_register=1200,
+            modbus_command_base_register=2200,
+        )
         adapter = create_adapter(settings)
         assert isinstance(adapter, ModbusPlcAdapter)
+        assert adapter.command_coil_base == 10
+        assert adapter.status_base_register == 1200
+        assert adapter.command_base_register == 2200
         diagnostics = adapter.diagnostics()
         assert diagnostics["connected"] is False
         assert diagnostics["last_error"]

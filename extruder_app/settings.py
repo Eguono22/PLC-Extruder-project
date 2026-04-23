@@ -40,6 +40,9 @@ class AppSettings:
     modbus_endpoint: str = "127.0.0.1:502"
     modbus_unit_id: int = 1
     modbus_timeout_s: float = 2.0
+    modbus_command_coil_base: int = 0
+    modbus_status_base_register: int = 1000
+    modbus_command_base_register: int = 2000
     scan_interval_s: float = 0.1
     persist_logs: bool = True
     log_dir: str = "runtime_logs"
@@ -57,6 +60,9 @@ class AppSettings:
             modbus_endpoint=os.getenv("EXTRUDER_MODBUS_ENDPOINT", "127.0.0.1:502"),
             modbus_unit_id=_get_int("EXTRUDER_MODBUS_UNIT_ID", 1),
             modbus_timeout_s=_get_float("EXTRUDER_MODBUS_TIMEOUT_S", 2.0),
+            modbus_command_coil_base=_get_int("EXTRUDER_MODBUS_COMMAND_COIL_BASE", 0),
+            modbus_status_base_register=_get_int("EXTRUDER_MODBUS_STATUS_BASE_REGISTER", 1000),
+            modbus_command_base_register=_get_int("EXTRUDER_MODBUS_COMMAND_BASE_REGISTER", 2000),
             scan_interval_s=_get_float("EXTRUDER_SCAN_INTERVAL_S", 0.1),
             persist_logs=_get_bool("EXTRUDER_PERSIST_LOGS", True),
             log_dir=os.getenv("EXTRUDER_LOG_DIR", "runtime_logs"),

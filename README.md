@@ -166,6 +166,9 @@ The application reads environment variables for runtime behavior:
 - `EXTRUDER_MODBUS_ENDPOINT`
 - `EXTRUDER_MODBUS_UNIT_ID`
 - `EXTRUDER_MODBUS_TIMEOUT_S`
+- `EXTRUDER_MODBUS_COMMAND_COIL_BASE`
+- `EXTRUDER_MODBUS_STATUS_BASE_REGISTER`
+- `EXTRUDER_MODBUS_COMMAND_BASE_REGISTER`
 
 Use `.env.example` as the starting template for local or container runs.
 
@@ -257,6 +260,10 @@ register and coil exposure:
 The default Modbus endpoint format is `host:port`, for example `127.0.0.1:502`.
 Use `EXTRUDER_MODBUS_UNIT_ID` to target the PLC slave/unit id and
 `EXTRUDER_MODBUS_TIMEOUT_S` to tune connection timeout during commissioning.
+Use `EXTRUDER_MODBUS_COMMAND_COIL_BASE`,
+`EXTRUDER_MODBUS_STATUS_BASE_REGISTER`, and
+`EXTRUDER_MODBUS_COMMAND_BASE_REGISTER` when your PLC exposes the same compact
+layout at different base addresses.
 
 ---
 

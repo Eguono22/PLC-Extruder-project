@@ -532,14 +532,14 @@ class ModbusPlcAdapter(BasePlcAdapter):
 
     mode_name = "modbus"
 
-    START_COIL = 0
-    STOP_COIL = 1
-    RESET_COIL = 2
-    EMERGENCY_STOP_COIL = 3
-    ACK_ALARMS_COIL = 4
+    START_COIL_OFFSET = 0
+    STOP_COIL_OFFSET = 1
+    RESET_COIL_OFFSET = 2
+    EMERGENCY_STOP_COIL_OFFSET = 3
+    ACK_ALARMS_COIL_OFFSET = 4
 
-    COMMAND_BASE_REGISTER = 2000
-    STATUS_BASE_REGISTER = 1000
+    DEFAULT_COMMAND_BASE_REGISTER = 2000
+    DEFAULT_STATUS_BASE_REGISTER = 1000
     STATUS_REGISTER_COUNT = 25
 
     STATE_MAP = {
@@ -563,10 +563,16 @@ class ModbusPlcAdapter(BasePlcAdapter):
         endpoint: str,
         unit_id: int = 1,
         timeout_s: float = 2.0,
+        command_coil_base: int = 0,
+        status_base_register: int = DEFAULT_STATUS_BASE_REGISTER,
+        command_base_register: int = DEFAULT_COMMAND_BASE_REGISTER,
     ) -> None:
         self.endpoint = endpoint
         self.unit_id = unit_id
         self.timeout_s = timeout_s
+        self.command_coil_base = command_coil_base
+        self.status_base_register = status_base_register
+        self.command_base_register = command_base_register
         self._host, self._port = self._parse_endpoint(endpoint)
         self._connected = False
         self._cached_alarms: List[Alarm] = []
@@ -578,6 +584,9 @@ class ModbusPlcAdapter(BasePlcAdapter):
         )
         self._last_poll_succeeded = False
         self._last_snapshot = self._empty_snapshot()
+
+    def _coil_address(self, offset: int) -> int:
+        return self.command_coil_base + offset
 
     @classmethod
     def _parse_endpoint(cls, endpoint: str) -> Tuple[str, int]:
@@ -860,7 +869,7 @@ class ModbusPlcAdapter(BasePlcAdapter):
             registers = self._run_with_client(
                 lambda client: self._read_holding_registers(
                     client,
-                    self.STATUS_BASE_REGISTER,
+                    self.status_base_register,
                     self.STATUS_REGISTER_COUNT,
                 )
             )
@@ -874,24 +883,28 @@ class ModbusPlcAdapter(BasePlcAdapter):
 
     def start(self) -> bool:
         return self._run_command(
-            lambda client: self._pulse_coil(client, self.START_COIL)
+            lambda client: self._pulse_coil(client, self._coil_address(self.START_COIL_OFFSET))
         )
 
     def stop(self) -> bool:
         return self._run_command(
-            lambda client: self._pulse_coil(client, self.STOP_COIL)
+            lambda client: self._pulse_coil(client, self._coil_address(self.STOP_COIL_OFFSET))
         )
 
     def reset(self) -> bool:
         return self._run_command(
-            lambda client: self._pulse_coil(client, self.RESET_COIL)
+            lambda client: self._pulse_coil(client, self._coil_address(self.RESET_COIL_OFFSET))
         )
 
     def emergency_stop(self) -> None:
-        self._run_command(lambda client: self._pulse_coil(client, self.EMERGENCY_STOP_COIL))
+        self._run_command(
+            lambda client: self._pulse_coil(client, self._coil_address(self.EMERGENCY_STOP_COIL_OFFSET))
+        )
 
     def acknowledge_alarms(self) -> int:
-        if self._run_command(lambda client: self._pulse_coil(client, self.ACK_ALARMS_COIL)):
+        if self._run_command(
+            lambda client: self._pulse_coil(client, self._coil_address(self.ACK_ALARMS_COIL_OFFSET))
+        ):
             return len(self._cached_alarms)
         return 0
 
@@ -921,7 +934,7 @@ class ModbusPlcAdapter(BasePlcAdapter):
         self._run_command(
             lambda client: self._write_registers(
                 client,
-                self.COMMAND_BASE_REGISTER,
+                self.command_base_register,
                 writes,
             )
         )
