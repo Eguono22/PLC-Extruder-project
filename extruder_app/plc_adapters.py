@@ -532,15 +532,51 @@ class ModbusPlcAdapter(BasePlcAdapter):
 
     mode_name = "modbus"
 
-    START_COIL_OFFSET = 0
-    STOP_COIL_OFFSET = 1
-    RESET_COIL_OFFSET = 2
-    EMERGENCY_STOP_COIL_OFFSET = 3
-    ACK_ALARMS_COIL_OFFSET = 4
-
     DEFAULT_COMMAND_BASE_REGISTER = 2000
     DEFAULT_STATUS_BASE_REGISTER = 1000
-    STATUS_REGISTER_COUNT = 25
+    DEFAULT_COMMAND_COIL_MAP = {
+        "start": 0,
+        "stop": 1,
+        "reset": 2,
+        "emergency_stop": 3,
+        "acknowledge_alarms": 4,
+    }
+    DEFAULT_STATUS_REGISTER_MAP = {
+        "state": 0,
+        "scan_number_hi": 1,
+        "scan_number_lo": 2,
+        "run_time_hi": 3,
+        "run_time_lo": 4,
+        "safety_state": 5,
+        "alarm_summary": 6,
+        "flags": 7,
+        "feed_rate_setpoint": 8,
+        "screw_rpm_setpoint": 9,
+        "zone1_sp": 10,
+        "zone2_sp": 11,
+        "zone3_sp": 12,
+        "zone4_sp": 13,
+        "die_sp": 14,
+        "zone1_temp": 15,
+        "zone2_temp": 16,
+        "zone3_temp": 17,
+        "zone4_temp": 18,
+        "die_temp": 19,
+        "pressure_bar": 20,
+        "motor_rpm": 21,
+        "motor_current": 22,
+        "feeder_rate": 23,
+        "hopper_level": 24,
+    }
+    DEFAULT_COMMAND_REGISTER_MAP = {
+        "feed_rate_setpoint": 0,
+        "screw_rpm_setpoint": 1,
+        "zone1_sp": 2,
+        "zone2_sp": 3,
+        "zone3_sp": 4,
+        "zone4_sp": 5,
+        "die_sp": 6,
+    }
 
     STATE_MAP = {
         0: "IDLE",
@@ -566,6 +602,9 @@ class ModbusPlcAdapter(BasePlcAdapter):
         command_coil_base: int = 0,
         status_base_register: int = DEFAULT_STATUS_BASE_REGISTER,
         command_base_register: int = DEFAULT_COMMAND_BASE_REGISTER,
+        command_coil_map: Optional[Dict[str, int]] = None,
+        status_register_map: Optional[Dict[str, int]] = None,
+        command_register_map: Optional[Dict[str, int]] = None,
     ) -> None:
         self.endpoint = endpoint
         self.unit_id = unit_id
@@ -573,6 +612,16 @@ class ModbusPlcAdapter(BasePlcAdapter):
         self.command_coil_base = command_coil_base
         self.status_base_register = status_base_register
         self.command_base_register = command_base_register
+        self.command_coil_map = dict(self.DEFAULT_COMMAND_COIL_MAP)
+        if command_coil_map:
+            self.command_coil_map.update(command_coil_map)
+        self.status_register_map = dict(self.DEFAULT_STATUS_REGISTER_MAP)
+        if status_register_map:
+            self.status_register_map.update(status_register_map)
+        self.command_register_map = dict(self.DEFAULT_COMMAND_REGISTER_MAP)
+        if command_register_map:
+            self.command_register_map.update(command_register_map)
+        self.status_register_count = max(self.status_register_map.values()) + 1
         self._host, self._port = self._parse_endpoint(endpoint)
         self._connected = False
         self._cached_alarms: List[Alarm] = []
@@ -585,8 +634,14 @@ class ModbusPlcAdapter(BasePlcAdapter):
         self._last_poll_succeeded = False
         self._last_snapshot = self._empty_snapshot()
 
-    def _coil_address(self, offset: int) -> int:
-        return self.command_coil_base + offset
+    def _coil_address(self, name: str) -> int:
+        return self.command_coil_base + self.command_coil_map[name]
+
+    def _status_value(self, registers: Sequence[int], name: str) -> int:
+        return int(registers[self.status_register_map[name]])
+
+    def _command_register_address(self, name: str) -> int:
+        return self.command_base_register + self.command_register_map[name]
 
     @classmethod
     def _parse_endpoint(cls, endpoint: str) -> Tuple[str, int]:
@@ -735,9 +790,13 @@ class ModbusPlcAdapter(BasePlcAdapter):
             )
         return registers
 
-    def _write_registers(self, client, address: int, values: List[int]) -> None:
-        response = self._call_with_unit(client.write_registers, address, values)
+    def _write_register(self, client, address: int, value: int) -> None:
+        response = self._call_with_unit(client.write_register, address, value)
         self._ensure_response_ok(response)
+
+    def _write_register_map(self, client, values: Dict[str, int]) -> None:
+        for name, value in values.items():
+            self._write_register(client, self._command_register_address(name), value)
 
     def _write_coil(self, client, address: int, value: bool) -> None:
         response = self._call_with_unit(client.write_coil, address, value)
@@ -749,16 +808,16 @@ class ModbusPlcAdapter(BasePlcAdapter):
         self._write_coil(client, address, False)
 
     def _build_snapshot(self, registers: Sequence[int]) -> Dict[str, object]:
-        flags = int(registers[7])
+        flags = self._status_value(registers, "flags")
         any_alarm = bool(flags & 0b0001)
         any_warning = bool(flags & 0b0010)
         heater_all_at_setpoint = bool(flags & 0b0100)
         die_at_setpoint = bool(flags & 0b1000)
-        safety_state = self._safety_state_name(registers[5])
+        safety_state = self._safety_state_name(self._status_value(registers, "safety_state"))
         summary = "No active alarms"
         if any_alarm or any_warning:
             summary = (
-                f"Modbus AlarmWord {int(registers[6])}"
+                f"Modbus AlarmWord {self._status_value(registers, 'alarm_summary')}"
                 f" | state={safety_state}"
             )
 
@@ -774,19 +833,31 @@ class ModbusPlcAdapter(BasePlcAdapter):
                 )
             )
 
-        zone_temps = [self._decode_scaled(registers[index]) for index in range(15, 19)]
-        zone_setpoints = [self._decode_scaled(registers[index]) for index in range(10, 14)]
-        feeder_rate = self._decode_scaled(registers[23])
-        motor_rpm = self._decode_scaled(registers[21])
+        zone_temps = [
+            self._decode_scaled(self._status_value(registers, f"zone{idx}_temp"))
+            for idx in range(1, 5)
+        ]
+        zone_setpoints = [
+            self._decode_scaled(self._status_value(registers, f"zone{idx}_sp"))
+            for idx in range(1, 5)
+        ]
+        feeder_rate = self._decode_scaled(self._status_value(registers, "feeder_rate"))
+        motor_rpm = self._decode_scaled(self._status_value(registers, "motor_rpm"))
         throughput = feeder_rate * (motor_rpm / 150.0 if motor_rpm > 0 else 0.0)
 
         snapshot = {
-            "state": self._state_name(registers[0]),
-            "scan_number": self._decode_u32(registers[1], registers[2]),
-            "run_time_s": self._decode_u32(registers[3], registers[4]) / 10.0,
+            "state": self._state_name(self._status_value(registers, "state")),
+            "scan_number": self._decode_u32(
+                self._status_value(registers, "scan_number_hi"),
+                self._status_value(registers, "scan_number_lo"),
+            ),
+            "run_time_s": self._decode_u32(
+                self._status_value(registers, "run_time_hi"),
+                self._status_value(registers, "run_time_lo"),
+            ) / 10.0,
             "recipe": {
-                "feed_rate_kg_h": self._decode_scaled(registers[8]),
-                "screw_rpm": self._decode_scaled(registers[9]),
+                "feed_rate_kg_h": self._decode_scaled(self._status_value(registers, "feed_rate_setpoint")),
+                "screw_rpm": self._decode_scaled(self._status_value(registers, "screw_rpm_setpoint")),
             },
             "safety": {"state": safety_state},
             "alarms": summary,
@@ -805,19 +876,19 @@ class ModbusPlcAdapter(BasePlcAdapter):
             },
             "motor": {
                 "actual_rpm": motor_rpm,
-                "setpoint_rpm": self._decode_scaled(registers[9]),
-                "current_a": self._decode_scaled(registers[22]),
+                "setpoint_rpm": self._decode_scaled(self._status_value(registers, "screw_rpm_setpoint")),
+                "current_a": self._decode_scaled(self._status_value(registers, "motor_current")),
                 "torque_pct": 0.0,
             },
             "feeder": {
                 "actual_rate_kg_h": feeder_rate,
-                "setpoint_kg_h": self._decode_scaled(registers[8]),
-                "hopper_level_pct": self._decode_scaled(registers[24]),
+                "setpoint_kg_h": self._decode_scaled(self._status_value(registers, "feed_rate_setpoint")),
+                "hopper_level_pct": self._decode_scaled(self._status_value(registers, "hopper_level")),
             },
             "die": {
-                "temperature_c": self._decode_scaled(registers[19]),
-                "setpoint_c": self._decode_scaled(registers[14]),
-                "melt_pressure_bar": self._decode_scaled(registers[20]),
+                "temperature_c": self._decode_scaled(self._status_value(registers, "die_temp")),
+                "setpoint_c": self._decode_scaled(self._status_value(registers, "die_sp")),
+                "melt_pressure_bar": self._decode_scaled(self._status_value(registers, "pressure_bar")),
                 "throughput_kg_h": throughput,
                 "at_setpoint": die_at_setpoint,
             },
@@ -870,7 +941,7 @@ class ModbusPlcAdapter(BasePlcAdapter):
                 lambda client: self._read_holding_registers(
                     client,
                     self.status_base_register,
-                    self.STATUS_REGISTER_COUNT,
+                    self.status_register_count,
                 )
             )
             self._last_snapshot = self._build_snapshot(registers)
@@ -883,27 +954,27 @@ class ModbusPlcAdapter(BasePlcAdapter):
 
     def start(self) -> bool:
         return self._run_command(
-            lambda client: self._pulse_coil(client, self._coil_address(self.START_COIL_OFFSET))
+            lambda client: self._pulse_coil(client, self._coil_address("start"))
         )
 
     def stop(self) -> bool:
         return self._run_command(
-            lambda client: self._pulse_coil(client, self._coil_address(self.STOP_COIL_OFFSET))
+            lambda client: self._pulse_coil(client, self._coil_address("stop"))
         )
 
     def reset(self) -> bool:
         return self._run_command(
-            lambda client: self._pulse_coil(client, self._coil_address(self.RESET_COIL_OFFSET))
+            lambda client: self._pulse_coil(client, self._coil_address("reset"))
         )
 
     def emergency_stop(self) -> None:
         self._run_command(
-            lambda client: self._pulse_coil(client, self._coil_address(self.EMERGENCY_STOP_COIL_OFFSET))
+            lambda client: self._pulse_coil(client, self._coil_address("emergency_stop"))
         )
 
     def acknowledge_alarms(self) -> int:
         if self._run_command(
-            lambda client: self._pulse_coil(client, self._coil_address(self.ACK_ALARMS_COIL_OFFSET))
+            lambda client: self._pulse_coil(client, self._coil_address("acknowledge_alarms"))
         ):
             return len(self._cached_alarms)
         return 0
@@ -916,15 +987,15 @@ class ModbusPlcAdapter(BasePlcAdapter):
         die_setpoint_c: Optional[float] = None,
     ) -> None:
         zone_setpoints_c = zone_setpoints_c or []
-        writes = [
-            self._encode_scaled(feed_rate_kg_h),
-            self._encode_scaled(screw_rpm),
-            self._encode_scaled(zone_setpoints_c[0]) if len(zone_setpoints_c) > 0 else 0,
-            self._encode_scaled(zone_setpoints_c[1]) if len(zone_setpoints_c) > 1 else 0,
-            self._encode_scaled(zone_setpoints_c[2]) if len(zone_setpoints_c) > 2 else 0,
-            self._encode_scaled(zone_setpoints_c[3]) if len(zone_setpoints_c) > 3 else 0,
-            self._encode_scaled(die_setpoint_c) if die_setpoint_c is not None else 0,
-        ]
+        writes = {
+            "feed_rate_setpoint": self._encode_scaled(feed_rate_kg_h),
+            "screw_rpm_setpoint": self._encode_scaled(screw_rpm),
+            "zone1_sp": self._encode_scaled(zone_setpoints_c[0]) if len(zone_setpoints_c) > 0 else 0,
+            "zone2_sp": self._encode_scaled(zone_setpoints_c[1]) if len(zone_setpoints_c) > 1 else 0,
+            "zone3_sp": self._encode_scaled(zone_setpoints_c[2]) if len(zone_setpoints_c) > 2 else 0,
+            "zone4_sp": self._encode_scaled(zone_setpoints_c[3]) if len(zone_setpoints_c) > 3 else 0,
+            "die_sp": self._encode_scaled(die_setpoint_c) if die_setpoint_c is not None else 0,
+        }
         self._apply_recipe_snapshot(
             feed_rate_kg_h=feed_rate_kg_h,
             screw_rpm=screw_rpm,
@@ -932,11 +1003,7 @@ class ModbusPlcAdapter(BasePlcAdapter):
             die_setpoint_c=die_setpoint_c,
         )
         self._run_command(
-            lambda client: self._write_registers(
-                client,
-                self.command_base_register,
-                writes,
-            )
+            lambda client: self._write_register_map(client, writes)
         )
 
     def status_snapshot(self) -> Dict[str, object]:

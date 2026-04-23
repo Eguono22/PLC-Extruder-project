@@ -26,6 +26,9 @@ def create_adapter(settings: AppSettings):
             command_coil_base=settings.modbus_command_coil_base,
             status_base_register=settings.modbus_status_base_register,
             command_base_register=settings.modbus_command_base_register,
+            command_coil_map=settings.modbus_command_coil_map,
+            status_register_map=settings.modbus_status_register_map,
+            command_register_map=settings.modbus_command_register_map,
         )
     raise ValueError(
         "Unsupported EXTRUDER_PLC_MODE. Use one of: simulation, opcua, modbus."

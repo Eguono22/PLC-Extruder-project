@@ -169,6 +169,9 @@ The application reads environment variables for runtime behavior:
 - `EXTRUDER_MODBUS_COMMAND_COIL_BASE`
 - `EXTRUDER_MODBUS_STATUS_BASE_REGISTER`
 - `EXTRUDER_MODBUS_COMMAND_BASE_REGISTER`
+- `EXTRUDER_MODBUS_COMMAND_COIL_MAP_JSON`
+- `EXTRUDER_MODBUS_STATUS_REGISTER_MAP_JSON`
+- `EXTRUDER_MODBUS_COMMAND_REGISTER_MAP_JSON`
 
 Use `.env.example` as the starting template for local or container runs.
 
@@ -264,6 +267,15 @@ Use `EXTRUDER_MODBUS_COMMAND_COIL_BASE`,
 `EXTRUDER_MODBUS_STATUS_BASE_REGISTER`, and
 `EXTRUDER_MODBUS_COMMAND_BASE_REGISTER` when your PLC exposes the same compact
 layout at different base addresses.
+Use the `*_MAP_JSON` variables when the PLC exposes the same signals at
+non-sequential offsets or a partially custom map.
+
+Example custom signal map:
+
+```bash
+EXTRUDER_MODBUS_STATUS_REGISTER_MAP_JSON={"state":0,"scan_number_hi":1,"scan_number_lo":2,"run_time_hi":3,"run_time_lo":4,"safety_state":5,"alarm_summary":6,"flags":7,"feed_rate_setpoint":8,"screw_rpm_setpoint":9,"zone1_sp":10,"zone2_sp":11,"zone3_sp":12,"zone4_sp":13,"die_sp":14,"zone1_temp":15,"zone2_temp":16,"zone3_temp":17,"zone4_temp":18,"die_temp":19,"pressure_bar":20,"motor_rpm":30,"motor_current":22,"feeder_rate":23,"hopper_level":24}
+EXTRUDER_MODBUS_COMMAND_REGISTER_MAP_JSON={"feed_rate_setpoint":0,"screw_rpm_setpoint":1,"zone1_sp":2,"zone2_sp":3,"zone3_sp":4,"zone4_sp":5,"die_sp":10}
+```
 
 ---
 
