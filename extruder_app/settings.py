@@ -38,6 +38,8 @@ class AppSettings:
     opcua_node_prefix: str = "ns=2;s="
     opcua_timeout_s: float = 5.0
     modbus_endpoint: str = "127.0.0.1:502"
+    modbus_unit_id: int = 1
+    modbus_timeout_s: float = 2.0
     scan_interval_s: float = 0.1
     persist_logs: bool = True
     log_dir: str = "runtime_logs"
@@ -53,6 +55,8 @@ class AppSettings:
             opcua_node_prefix=os.getenv("EXTRUDER_OPCUA_NODE_PREFIX", "ns=2;s="),
             opcua_timeout_s=_get_float("EXTRUDER_OPCUA_TIMEOUT_S", 5.0),
             modbus_endpoint=os.getenv("EXTRUDER_MODBUS_ENDPOINT", "127.0.0.1:502"),
+            modbus_unit_id=_get_int("EXTRUDER_MODBUS_UNIT_ID", 1),
+            modbus_timeout_s=_get_float("EXTRUDER_MODBUS_TIMEOUT_S", 2.0),
             scan_interval_s=_get_float("EXTRUDER_SCAN_INTERVAL_S", 0.1),
             persist_logs=_get_bool("EXTRUDER_PERSIST_LOGS", True),
             log_dir=os.getenv("EXTRUDER_LOG_DIR", "runtime_logs"),

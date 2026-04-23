@@ -19,7 +19,11 @@ def create_adapter(settings: AppSettings):
             timeout_s=settings.opcua_timeout_s,
         )
     if settings.plc_mode == "modbus":
-        return ModbusPlcAdapter(settings.modbus_endpoint)
+        return ModbusPlcAdapter(
+            endpoint=settings.modbus_endpoint,
+            unit_id=settings.modbus_unit_id,
+            timeout_s=settings.modbus_timeout_s,
+        )
     raise ValueError(
         "Unsupported EXTRUDER_PLC_MODE. Use one of: simulation, opcua, modbus."
     )

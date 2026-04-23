@@ -6,6 +6,7 @@ import asyncio
 import time
 from abc import ABC, abstractmethod
 from typing import Dict, List, Optional, Sequence, Tuple
+from urllib.parse import urlparse
 
 from plc_extruder.controller import ExtruderController
 from plc_extruder.utils.alarms import Alarm, AlarmSeverity
@@ -14,6 +15,11 @@ try:
     from asyncua import Client
 except ImportError:  # pragma: no cover - exercised only when dependency is missing
     Client = None
+
+try:
+    from pymodbus.client import ModbusTcpClient
+except ImportError:  # pragma: no cover - exercised only when dependency is missing
+    ModbusTcpClient = None
 
 
 class BasePlcAdapter(ABC):
@@ -522,21 +528,76 @@ class OpcUaPlcAdapter(BasePlcAdapter):
 
 
 class ModbusPlcAdapter(BasePlcAdapter):
-    """Placeholder for a future Modbus-backed PLC adapter."""
+    """Modbus TCP adapter using a compact register/coil map."""
 
     mode_name = "modbus"
 
-    def __init__(self, endpoint: str) -> None:
+    START_COIL = 0
+    STOP_COIL = 1
+    RESET_COIL = 2
+    EMERGENCY_STOP_COIL = 3
+    ACK_ALARMS_COIL = 4
+
+    COMMAND_BASE_REGISTER = 2000
+    STATUS_BASE_REGISTER = 1000
+    STATUS_REGISTER_COUNT = 25
+
+    STATE_MAP = {
+        0: "IDLE",
+        1: "STARTUP",
+        2: "RUNNING",
+        3: "SHUTDOWN",
+        4: "EMERGENCY_STOP",
+        5: "UNAVAILABLE",
+    }
+    SAFETY_STATE_MAP = {
+        0: "SAFE",
+        1: "WARNING",
+        2: "FAULT",
+        3: "E_STOP",
+        4: "UNKNOWN",
+    }
+
+    def __init__(
+        self,
+        endpoint: str,
+        unit_id: int = 1,
+        timeout_s: float = 2.0,
+    ) -> None:
         self.endpoint = endpoint
-        self._last_error = "Modbus adapter not implemented"
+        self.unit_id = unit_id
+        self.timeout_s = timeout_s
+        self._host, self._port = self._parse_endpoint(endpoint)
+        self._connected = False
+        self._cached_alarms: List[Alarm] = []
+        self._last_error = (
+            "The pymodbus package is required for Modbus mode. "
+            "Install dependencies from requirements.txt first."
+            if ModbusTcpClient is None
+            else "Awaiting Modbus scan"
+        )
         self._last_poll_succeeded = False
-        self._snapshot = {
+        self._last_snapshot = self._empty_snapshot()
+
+    @classmethod
+    def _parse_endpoint(cls, endpoint: str) -> Tuple[str, int]:
+        candidate = endpoint.strip()
+        parsed = urlparse(candidate if "://" in candidate else f"tcp://{candidate}")
+        if not parsed.hostname:
+            raise ValueError(
+                "Invalid EXTRUDER_MODBUS_ENDPOINT. Use host:port or tcp://host:port."
+            )
+        return parsed.hostname, parsed.port or 502
+
+    @classmethod
+    def _empty_snapshot(cls) -> Dict[str, object]:
+        return {
             "state": "UNAVAILABLE",
             "scan_number": 0,
             "run_time_s": 0.0,
             "recipe": {"feed_rate_kg_h": 0.0, "screw_rpm": 0.0},
             "safety": {"state": "UNKNOWN"},
-            "alarms": "Modbus adapter not implemented",
+            "alarms": "No data from Modbus PLC",
             "heater": {
                 "all_at_setpoint": False,
                 "zones": [
@@ -570,22 +631,268 @@ class ModbusPlcAdapter(BasePlcAdapter):
             "active_alarms": [],
         }
 
-    def scan(self) -> None:
-        self._last_poll_succeeded = False
+    @staticmethod
+    def _decode_scaled(value: int, scale: float = 10.0) -> float:
+        if value >= 0x8000:
+            value -= 0x10000
+        return value / scale
 
-    def start(self) -> bool:
-        return False
+    @staticmethod
+    def _decode_u32(high_word: int, low_word: int) -> int:
+        return ((high_word & 0xFFFF) << 16) | (low_word & 0xFFFF)
 
-    def stop(self) -> bool:
-        return False
+    @staticmethod
+    def _encode_scaled(value: float, scale: float = 10.0) -> int:
+        encoded = int(round(value * scale))
+        return encoded & 0xFFFF
 
-    def reset(self) -> bool:
-        return False
+    @classmethod
+    def _state_name(cls, raw: int) -> str:
+        return cls.STATE_MAP.get(int(raw), "UNKNOWN")
 
-    def emergency_stop(self) -> None:
+    @classmethod
+    def _safety_state_name(cls, raw: int) -> str:
+        return cls.SAFETY_STATE_MAP.get(int(raw), "UNKNOWN")
+
+    @staticmethod
+    def _severity_from_summary(any_alarm: bool, any_warning: bool) -> Optional[AlarmSeverity]:
+        if any_alarm and not any_warning:
+            return AlarmSeverity.FAULT
+        if any_alarm and any_warning:
+            return AlarmSeverity.CRITICAL
+        if any_warning:
+            return AlarmSeverity.WARNING
         return None
 
+    def _run_with_client(self, callback):
+        if ModbusTcpClient is None:
+            raise RuntimeError(
+                "The pymodbus package is required for Modbus mode. "
+                "Install dependencies from requirements.txt first."
+            )
+        client = ModbusTcpClient(
+            host=self._host,
+            port=self._port,
+            timeout=self.timeout_s,
+        )
+        connected = False
+        try:
+            result = client.connect()
+            connected = bool(result)
+            if result is None:
+                connected = bool(getattr(client, "connected", False))
+        except Exception:
+            connected = False
+        if not connected:
+            close = getattr(client, "close", None)
+            if callable(close):
+                close()
+            raise RuntimeError(
+                f"Unable to connect to Modbus PLC at {self._host}:{self._port}"
+            )
+        self._connected = True
+        try:
+            return callback(client)
+        finally:
+            self._connected = False
+            close = getattr(client, "close", None)
+            if callable(close):
+                close()
+
+    def _call_with_unit(self, method, *args):
+        for keyword in ("slave", "unit"):
+            try:
+                return method(*args, **{keyword: self.unit_id})
+            except TypeError:
+                continue
+        return method(*args)
+
+    @staticmethod
+    def _ensure_response_ok(response) -> None:
+        if response is None:
+            raise RuntimeError("No response returned from Modbus PLC")
+        is_error = getattr(response, "isError", None)
+        if callable(is_error) and response.isError():
+            raise RuntimeError(str(response))
+
+    def _read_holding_registers(self, client, address: int, count: int):
+        response = self._call_with_unit(client.read_holding_registers, address, count)
+        self._ensure_response_ok(response)
+        registers = getattr(response, "registers", None)
+        if registers is None or len(registers) < count:
+            raise RuntimeError(
+                f"Modbus PLC returned {0 if registers is None else len(registers)} "
+                f"holding registers, expected {count}"
+            )
+        return registers
+
+    def _write_registers(self, client, address: int, values: List[int]) -> None:
+        response = self._call_with_unit(client.write_registers, address, values)
+        self._ensure_response_ok(response)
+
+    def _write_coil(self, client, address: int, value: bool) -> None:
+        response = self._call_with_unit(client.write_coil, address, value)
+        self._ensure_response_ok(response)
+
+    def _pulse_coil(self, client, address: int) -> None:
+        self._write_coil(client, address, True)
+        time.sleep(0.05)
+        self._write_coil(client, address, False)
+
+    def _build_snapshot(self, registers: Sequence[int]) -> Dict[str, object]:
+        flags = int(registers[7])
+        any_alarm = bool(flags & 0b0001)
+        any_warning = bool(flags & 0b0010)
+        heater_all_at_setpoint = bool(flags & 0b0100)
+        die_at_setpoint = bool(flags & 0b1000)
+        safety_state = self._safety_state_name(registers[5])
+        summary = "No active alarms"
+        if any_alarm or any_warning:
+            summary = (
+                f"Modbus AlarmWord {int(registers[6])}"
+                f" | state={safety_state}"
+            )
+
+        severity = self._severity_from_summary(any_alarm, any_warning)
+        self._cached_alarms = []
+        if severity is not None:
+            self._cached_alarms.append(
+                Alarm(
+                    code="MODBUS_ALARM_SUMMARY",
+                    message=summary,
+                    severity=severity,
+                    timestamp=time.time(),
+                )
+            )
+
+        zone_temps = [self._decode_scaled(registers[index]) for index in range(15, 19)]
+        zone_setpoints = [self._decode_scaled(registers[index]) for index in range(10, 14)]
+        feeder_rate = self._decode_scaled(registers[23])
+        motor_rpm = self._decode_scaled(registers[21])
+        throughput = feeder_rate * (motor_rpm / 150.0 if motor_rpm > 0 else 0.0)
+
+        snapshot = {
+            "state": self._state_name(registers[0]),
+            "scan_number": self._decode_u32(registers[1], registers[2]),
+            "run_time_s": self._decode_u32(registers[3], registers[4]) / 10.0,
+            "recipe": {
+                "feed_rate_kg_h": self._decode_scaled(registers[8]),
+                "screw_rpm": self._decode_scaled(registers[9]),
+            },
+            "safety": {"state": safety_state},
+            "alarms": summary,
+            "heater": {
+                "all_at_setpoint": heater_all_at_setpoint,
+                "zones": [
+                    {
+                        "zone": idx + 1,
+                        "temperature_c": zone_temps[idx],
+                        "setpoint_c": zone_setpoints[idx],
+                        "heater_output_pct": 0.0,
+                        "at_setpoint": abs(zone_temps[idx] - zone_setpoints[idx]) <= 5.0,
+                    }
+                    for idx in range(4)
+                ],
+            },
+            "motor": {
+                "actual_rpm": motor_rpm,
+                "setpoint_rpm": self._decode_scaled(registers[9]),
+                "current_a": self._decode_scaled(registers[22]),
+                "torque_pct": 0.0,
+            },
+            "feeder": {
+                "actual_rate_kg_h": feeder_rate,
+                "setpoint_kg_h": self._decode_scaled(registers[8]),
+                "hopper_level_pct": self._decode_scaled(registers[24]),
+            },
+            "die": {
+                "temperature_c": self._decode_scaled(registers[19]),
+                "setpoint_c": self._decode_scaled(registers[14]),
+                "melt_pressure_bar": self._decode_scaled(registers[20]),
+                "throughput_kg_h": throughput,
+                "at_setpoint": die_at_setpoint,
+            },
+            "active_alarms": [
+                {
+                    "code": alarm.code,
+                    "message": alarm.message,
+                    "severity": alarm.severity.name,
+                    "timestamp": alarm.timestamp,
+                    "acknowledged": alarm.acknowledged,
+                }
+                for alarm in self._cached_alarms
+            ],
+        }
+        return snapshot
+
+    def _run_command(self, callback) -> bool:
+        try:
+            self._run_with_client(callback)
+            self._last_error = ""
+            self._last_poll_succeeded = True
+            return True
+        except Exception as exc:
+            self._last_error = str(exc)
+            self._last_poll_succeeded = False
+            self._connected = False
+            return False
+
+    def _apply_recipe_snapshot(
+        self,
+        feed_rate_kg_h: float,
+        screw_rpm: float,
+        zone_setpoints_c: Sequence[float],
+        die_setpoint_c: Optional[float],
+    ) -> None:
+        self._last_snapshot["recipe"] = {
+            "feed_rate_kg_h": float(feed_rate_kg_h),
+            "screw_rpm": float(screw_rpm),
+        }
+        self._last_snapshot["feeder"]["setpoint_kg_h"] = float(feed_rate_kg_h)
+        self._last_snapshot["motor"]["setpoint_rpm"] = float(screw_rpm)
+        for idx, temp in enumerate(zone_setpoints_c[:4]):
+            self._last_snapshot["heater"]["zones"][idx]["setpoint_c"] = float(temp)
+        if die_setpoint_c is not None:
+            self._last_snapshot["die"]["setpoint_c"] = float(die_setpoint_c)
+
+    def scan(self) -> None:
+        try:
+            registers = self._run_with_client(
+                lambda client: self._read_holding_registers(
+                    client,
+                    self.STATUS_BASE_REGISTER,
+                    self.STATUS_REGISTER_COUNT,
+                )
+            )
+            self._last_snapshot = self._build_snapshot(registers)
+            self._last_error = ""
+            self._last_poll_succeeded = True
+        except Exception as exc:
+            self._last_error = str(exc)
+            self._last_poll_succeeded = False
+            self._connected = False
+
+    def start(self) -> bool:
+        return self._run_command(
+            lambda client: self._pulse_coil(client, self.START_COIL)
+        )
+
+    def stop(self) -> bool:
+        return self._run_command(
+            lambda client: self._pulse_coil(client, self.STOP_COIL)
+        )
+
+    def reset(self) -> bool:
+        return self._run_command(
+            lambda client: self._pulse_coil(client, self.RESET_COIL)
+        )
+
+    def emergency_stop(self) -> None:
+        self._run_command(lambda client: self._pulse_coil(client, self.EMERGENCY_STOP_COIL))
+
     def acknowledge_alarms(self) -> int:
+        if self._run_command(lambda client: self._pulse_coil(client, self.ACK_ALARMS_COIL)):
+            return len(self._cached_alarms)
         return 0
 
     def set_recipe(
@@ -596,29 +903,41 @@ class ModbusPlcAdapter(BasePlcAdapter):
         die_setpoint_c: Optional[float] = None,
     ) -> None:
         zone_setpoints_c = zone_setpoints_c or []
-        self._snapshot["recipe"] = {
-            "feed_rate_kg_h": float(feed_rate_kg_h),
-            "screw_rpm": float(screw_rpm),
-        }
-        self._snapshot["feeder"]["setpoint_kg_h"] = float(feed_rate_kg_h)
-        self._snapshot["motor"]["setpoint_rpm"] = float(screw_rpm)
-        for idx, temp in enumerate(zone_setpoints_c[:4]):
-            self._snapshot["heater"]["zones"][idx]["setpoint_c"] = float(temp)
-        if die_setpoint_c is not None:
-            self._snapshot["die"]["setpoint_c"] = float(die_setpoint_c)
+        writes = [
+            self._encode_scaled(feed_rate_kg_h),
+            self._encode_scaled(screw_rpm),
+            self._encode_scaled(zone_setpoints_c[0]) if len(zone_setpoints_c) > 0 else 0,
+            self._encode_scaled(zone_setpoints_c[1]) if len(zone_setpoints_c) > 1 else 0,
+            self._encode_scaled(zone_setpoints_c[2]) if len(zone_setpoints_c) > 2 else 0,
+            self._encode_scaled(zone_setpoints_c[3]) if len(zone_setpoints_c) > 3 else 0,
+            self._encode_scaled(die_setpoint_c) if die_setpoint_c is not None else 0,
+        ]
+        self._apply_recipe_snapshot(
+            feed_rate_kg_h=feed_rate_kg_h,
+            screw_rpm=screw_rpm,
+            zone_setpoints_c=zone_setpoints_c,
+            die_setpoint_c=die_setpoint_c,
+        )
+        self._run_command(
+            lambda client: self._write_registers(
+                client,
+                self.COMMAND_BASE_REGISTER,
+                writes,
+            )
+        )
 
     def status_snapshot(self) -> Dict[str, object]:
-        return self._snapshot
+        return self._last_snapshot
 
     def active_alarms(self) -> List[Alarm]:
-        return []
+        return self._cached_alarms
 
     def diagnostics(self) -> Dict[str, object]:
         return {
             "plc_mode": self.mode_name,
-            "connected": False,
+            "connected": self._last_poll_succeeded,
             "endpoint": self.endpoint,
             "node_prefix": "",
-            "last_error": "Modbus adapter not implemented",
-            "last_poll_succeeded": False,
+            "last_error": self._last_error,
+            "last_poll_succeeded": self._last_poll_succeeded,
         }

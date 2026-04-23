@@ -33,7 +33,7 @@ class TestApplicationFactory:
         assert isinstance(adapter, ModbusPlcAdapter)
         diagnostics = adapter.diagnostics()
         assert diagnostics["connected"] is False
-        assert "not implemented" in diagnostics["last_error"].lower()
+        assert diagnostics["last_error"]
 
     def test_modbus_service_can_be_created_for_commissioning(self):
         settings = AppSettings(plc_mode="modbus")

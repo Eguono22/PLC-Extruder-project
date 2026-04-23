@@ -164,6 +164,8 @@ The application reads environment variables for runtime behavior:
 - `EXTRUDER_OPCUA_NODE_PREFIX`
 - `EXTRUDER_OPCUA_TIMEOUT_S`
 - `EXTRUDER_MODBUS_ENDPOINT`
+- `EXTRUDER_MODBUS_UNIT_ID`
+- `EXTRUDER_MODBUS_TIMEOUT_S`
 
 Use `.env.example` as the starting template for local or container runs.
 
@@ -200,9 +202,9 @@ The operator panel will be available at `http://127.0.0.1:8000`.
 
 - `simulation` mode is implemented and backed by the in-repo extruder simulator
 - `opcua` mode now reads and writes TwinCAT-style `gExtruder*` tags through OPC UA
-- `modbus` mode remains scaffolded for protocol-specific implementation
-- `modbus` mode now boots the app in a safe commissioning placeholder state
-  so the UI and diagnostics remain available while protocol work is pending
+- `modbus` mode now reads a compact holding-register map and pulses command coils
+- `modbus` mode still boots the app in a commissioning-safe state when the PLC is
+  offline or the Modbus dependency is not installed
 - runtime telemetry is written to `runtime_logs/` when log persistence is enabled
 
 ### OPC UA mapping
@@ -241,6 +243,20 @@ configured symbol prefix.
 The browser dashboard now includes a commissioning section that shows live
 connection health, endpoint details, the configured node prefix, the last
 adapter error, and browse results from the selected OPC UA node.
+
+### Modbus mapping
+
+The Modbus adapter uses a compact reference map intended for PLC-side holding
+register and coil exposure:
+
+- command coils `0..4` for `Start`, `Stop`, `Reset`, `EmergencyStop`, and alarm acknowledge
+- holding registers starting at `1000` for machine state, recipe setpoints, temperatures,
+  pressure, motor load, feeder rate, hopper level, and alarm/status flags
+- holding registers starting at `2000` for recipe writeback from the app to the PLC
+
+The default Modbus endpoint format is `host:port`, for example `127.0.0.1:502`.
+Use `EXTRUDER_MODBUS_UNIT_ID` to target the PLC slave/unit id and
+`EXTRUDER_MODBUS_TIMEOUT_S` to tune connection timeout during commissioning.
 
 ---
 
