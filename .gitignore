@@ -27,3 +27,6 @@ env/
 
 # Runtime data
 runtime_logs/
+
+# Local environment
+.env
