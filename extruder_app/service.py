@@ -153,6 +153,23 @@ class ExtruderApplicationService:
             snapshot["active_recipe"] = self._active_recipe.model_dump()
             return snapshot
 
+    def runtime_status(self) -> Dict[str, object]:
+        """Return application process and polling-loop status."""
+        is_running = bool(self._thread and self._thread.is_alive())
+        last_sample_ts = self._telemetry.last_sample_ts
+        sample_freshness_s = max(5.0, self._scan_interval_s * 10.0)
+        ready = is_running and (
+            last_sample_ts is None or (time.time() - last_sample_ts) <= sample_freshness_s
+        )
+        return {
+            "background_running": is_running,
+            "ready": ready,
+            "sample_count": self._telemetry.total_samples,
+            "event_count": self._telemetry.total_events,
+            "last_sample_ts": last_sample_ts,
+            "last_event_ts": self._telemetry.last_event_ts,
+        }
+
     def active_alarms(self) -> List[Dict[str, object]]:
         """Return serialized active alarms."""
         with self._lock:
@@ -200,6 +217,17 @@ class ExtruderApplicationService:
     def recent_events(self, limit: int = 100) -> List[Dict[str, object]]:
         """Return recent application/control events."""
         return self._telemetry.recent_events(limit=limit)
+
+    def dashboard_snapshot(self, event_limit: int = 12) -> Dict[str, object]:
+        """Return a single payload tailored for the operator dashboard."""
+        return {
+            "machine": self.machine_status(),
+            "alarms": self.active_alarms(),
+            "analytics": self.analytics_summary(),
+            "connection": self.connection_status(),
+            "events": self.recent_events(limit=event_limit),
+            "runtime": self.runtime_status(),
+        }
 
     def production_report(
         self,

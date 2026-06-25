@@ -11,9 +11,11 @@ class ZoneSetpoints(BaseModel):
     """Temperature setpoints for barrel zones and the die."""
 
     barrel_c: List[float] = Field(
-        default_factory=lambda: [180.0, 200.0, 220.0, 230.0]
+        default_factory=lambda: [180.0, 200.0, 220.0, 230.0],
+        min_length=4,
+        max_length=4,
     )
-    die_c: float = 235.0
+    die_c: float = Field(default=235.0, ge=0.0, le=450.0)
 
 
 class RecipeDefinition(BaseModel):
@@ -22,8 +24,8 @@ class RecipeDefinition(BaseModel):
     recipe_id: str
     name: str
     description: str
-    feed_rate_kg_h: float
-    screw_rpm: float
+    feed_rate_kg_h: float = Field(ge=0.0, le=500.0)
+    screw_rpm: float = Field(ge=0.0, le=250.0)
     zone_setpoints: ZoneSetpoints
 
 
@@ -33,8 +35,8 @@ class ActiveRecipeUpdate(BaseModel):
     recipe_id: Optional[str] = None
     name: Optional[str] = None
     description: str = ""
-    feed_rate_kg_h: float = 50.0
-    screw_rpm: float = 80.0
+    feed_rate_kg_h: float = Field(default=50.0, ge=0.0, le=500.0)
+    screw_rpm: float = Field(default=80.0, ge=0.0, le=250.0)
     zone_setpoints: ZoneSetpoints = Field(default_factory=ZoneSetpoints)
 
 
@@ -83,6 +85,38 @@ class CommandResponse(BaseModel):
     message: str
 
 
+class RuntimeStatus(BaseModel):
+    """Application runtime health and background polling state."""
+
+    background_running: bool
+    ready: bool
+    sample_count: int
+    event_count: int
+    last_sample_ts: Optional[float] = None
+    last_event_ts: Optional[float] = None
+
+
+class HealthStatus(BaseModel):
+    """Health check payload for liveness and readiness."""
+
+    ok: bool
+    status: str
+    app_environment: str
+    plc_mode: str
+    plc_connected: bool
+    runtime: RuntimeStatus
+
+
+class AppMetadata(BaseModel):
+    """Frontend metadata and deployment-facing app information."""
+
+    app_name: str
+    app_environment: str
+    app_version: str
+    plc_mode: str
+    dashboard_refresh_ms: int
+
+
 class TrendPoint(BaseModel):
     """Single time-series point for trend widgets."""
 
@@ -127,6 +161,17 @@ class ProductionReport(BaseModel):
     avg_hopper_level_pct: float
     event_count: int
     active_alarm_summary: str
+
+
+class DashboardSnapshot(BaseModel):
+    """Aggregated dashboard payload for the operator web UI."""
+
+    machine: MachineStatus
+    alarms: List[AlarmItem]
+    analytics: AnalyticsSummary
+    connection: ConnectionStatus
+    events: List[EventItem]
+    runtime: RuntimeStatus
 
 
 class MachineStatus(BaseModel):

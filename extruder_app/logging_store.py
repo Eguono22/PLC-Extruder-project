@@ -22,6 +22,10 @@ class TelemetryStore:
         self._samples: Deque[Dict[str, object]] = deque(maxlen=max_samples)
         self._events: Deque[Dict[str, object]] = deque(maxlen=max_events)
         self._persist_to_disk = persist_to_disk
+        self._total_samples = 0
+        self._total_events = 0
+        self._last_sample_ts: Optional[float] = None
+        self._last_event_ts: Optional[float] = None
         self._log_dir = Path(log_dir)
         self._telemetry_file = self._log_dir / "telemetry.jsonl"
         self._events_file = self._log_dir / "events.jsonl"
@@ -32,6 +36,8 @@ class TelemetryStore:
         """Append a machine snapshot."""
         sample = {"ts": time.time(), **snapshot}
         self._samples.append(sample)
+        self._total_samples += 1
+        self._last_sample_ts = float(sample["ts"])
         if self._persist_to_disk:
             with self._telemetry_file.open("a", encoding="utf-8") as handle:
                 handle.write(json.dumps(sample) + "\n")
@@ -46,6 +52,8 @@ class TelemetryStore:
             "payload": payload or {},
         }
         self._events.append(event)
+        self._total_events += 1
+        self._last_event_ts = float(event["ts"])
         if self._persist_to_disk:
             with self._events_file.open("a", encoding="utf-8") as handle:
                 handle.write(json.dumps(event) + "\n")
@@ -57,6 +65,26 @@ class TelemetryStore:
     def recent_events(self, limit: int = 100) -> List[Dict[str, object]]:
         """Return the most recent control events."""
         return list(self._events)[-limit:]
+
+    @property
+    def total_samples(self) -> int:
+        """Total number of samples observed since process start."""
+        return self._total_samples
+
+    @property
+    def total_events(self) -> int:
+        """Total number of events observed since process start."""
+        return self._total_events
+
+    @property
+    def last_sample_ts(self) -> Optional[float]:
+        """Timestamp of the most recent telemetry sample."""
+        return self._last_sample_ts
+
+    @property
+    def last_event_ts(self) -> Optional[float]:
+        """Timestamp of the most recent application event."""
+        return self._last_event_ts
 
     def production_report(
         self,

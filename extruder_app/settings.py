@@ -5,7 +5,7 @@ from __future__ import annotations
 import json
 import os
 from dataclasses import dataclass, field
-from typing import Dict
+from typing import Dict, List, Optional
 
 
 def _get_bool(name: str, default: bool) -> bool:
@@ -42,6 +42,14 @@ def _get_int_map(name: str, default: Dict[str, int]) -> Dict[str, int]:
     merged = dict(default)
     merged.update(result)
     return merged
+
+
+def _get_csv_list(name: str, default: List[str]) -> List[str]:
+    value = os.getenv(name)
+    if value is None:
+        return list(default)
+    items = [item.strip() for item in value.split(",") if item.strip()]
+    return items or list(default)
 
 
 @dataclass(frozen=True)
@@ -92,8 +100,20 @@ class AppSettings:
         "die_sp": 6,
     }
 
+    app_name: str = "Extruder Web Platform"
+    app_environment: str = "development"
     app_host: str = "127.0.0.1"
     app_port: int = 8000
+    dashboard_refresh_ms: int = 1000
+    static_cache_max_age_s: int = 3600
+    cors_allowed_origins: List[str] = field(default_factory=list)
+    trusted_hosts: List[str] = field(default_factory=lambda: ["*"])
+    auth_enabled: bool = False
+    auth_username: str = ""
+    auth_password: str = ""
+    auth_password_sha256: str = ""
+    public_domain: str = "extruder.example.com"
+    tls_email: str = ""
     plc_mode: str = "simulation"
     opcua_endpoint: str = "opc.tcp://127.0.0.1:4840"
     opcua_node_prefix: str = "ns=2;s="
@@ -117,12 +137,38 @@ class AppSettings:
     persist_logs: bool = True
     log_dir: str = "runtime_logs"
 
+    @property
+    def auth_is_configured(self) -> bool:
+        """Whether the configured auth settings are sufficient to enforce access control."""
+        return bool(
+            self.auth_username.strip()
+            and (self.auth_password.strip() or self.auth_password_sha256.strip())
+        )
+
+    @property
+    def auth_password_sha256_value(self) -> Optional[str]:
+        """Normalized optional SHA-256 password digest."""
+        value = self.auth_password_sha256.strip().lower()
+        return value or None
+
     @classmethod
     def from_env(cls) -> "AppSettings":
         """Build settings from environment variables."""
         return cls(
+            app_name=os.getenv("EXTRUDER_APP_NAME", "Extruder Web Platform"),
+            app_environment=os.getenv("EXTRUDER_APP_ENV", "development").strip().lower(),
             app_host=os.getenv("EXTRUDER_APP_HOST", "127.0.0.1"),
             app_port=_get_int("EXTRUDER_APP_PORT", 8000),
+            dashboard_refresh_ms=_get_int("EXTRUDER_DASHBOARD_REFRESH_MS", 1000),
+            static_cache_max_age_s=_get_int("EXTRUDER_STATIC_CACHE_MAX_AGE_S", 3600),
+            cors_allowed_origins=_get_csv_list("EXTRUDER_CORS_ALLOWED_ORIGINS", []),
+            trusted_hosts=_get_csv_list("EXTRUDER_TRUSTED_HOSTS", ["*"]),
+            auth_enabled=_get_bool("EXTRUDER_AUTH_ENABLED", False),
+            auth_username=os.getenv("EXTRUDER_AUTH_USERNAME", ""),
+            auth_password=os.getenv("EXTRUDER_AUTH_PASSWORD", ""),
+            auth_password_sha256=os.getenv("EXTRUDER_AUTH_PASSWORD_SHA256", ""),
+            public_domain=os.getenv("EXTRUDER_PUBLIC_DOMAIN", "extruder.example.com"),
+            tls_email=os.getenv("EXTRUDER_TLS_EMAIL", ""),
             plc_mode=os.getenv("EXTRUDER_PLC_MODE", "simulation").strip().lower(),
             opcua_endpoint=os.getenv("EXTRUDER_OPCUA_ENDPOINT", "opc.tcp://127.0.0.1:4840"),
             opcua_node_prefix=os.getenv("EXTRUDER_OPCUA_NODE_PREFIX", "ns=2;s="),

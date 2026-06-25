@@ -1,0 +1,38 @@
+services:
+  extruder-app:
+    build: .
+    container_name: extruder-app
+    env_file:
+      - .env
+    expose:
+      - "8000"
+    volumes:
+      - ./runtime_logs:/app/runtime_logs
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8000/api/health/live', timeout=3)"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 10s
+
+  extruder-proxy:
+    image: caddy:2
+    container_name: extruder-proxy
+    depends_on:
+      extruder-app:
+        condition: service_healthy
+    env_file:
+      - .env
+    ports:
+      - "80:80"
+      - "443:443"
+    volumes:
+      - ./Caddyfile:/etc/caddy/Caddyfile:ro
+      - caddy_data:/data
+      - caddy_config:/config
+    restart: unless-stopped
+
+volumes:
+  caddy_data:
+  caddy_config:

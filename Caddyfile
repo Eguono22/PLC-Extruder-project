@@ -1,0 +1,12 @@
+{$EXTRUDER_PUBLIC_DOMAIN:extruder.example.com} {
+    encode zstd gzip
+    tls {$EXTRUDER_TLS_EMAIL}
+
+    header {
+        Strict-Transport-Security "max-age=31536000; includeSubDomains; preload"
+        Permissions-Policy "geolocation=(), microphone=(), camera=()"
+        X-Robots-Tag "noindex, nofollow"
+    }
+
+    reverse_proxy extruder-app:8000
+}

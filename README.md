@@ -37,7 +37,9 @@ PLC-Extruder-project/
 │   ├── logging_store.py           # Telemetry and event logging
 │   ├── models.py                  # API request/response models
 │   └── static/
-│       └── index.html             # Browser operator panel
+│       ├── index.html             # Browser operator panel shell
+│       ├── styles.css             # Dashboard styling
+│       └── app.js                 # Frontend dashboard logic
 ├── plc_extruder/
 │   ├── controller.py              # State machine: IDLE → STARTUP → RUNNING → SHUTDOWN
 │   ├── components/
@@ -119,20 +121,23 @@ python -m pytest tests/ -v
 
 ---
 
-## Application Layer
+## Web Application
 
-The repository now includes a first MVP application layer for an
-extruder line:
+The repository now includes a production-oriented web application layer
+for an extruder line:
 
-- FastAPI backend for control, status, alarms, recipes, and analytics
+- FastAPI backend with lifecycle-managed service startup and structured API models
+- production web dashboard with separate HTML, CSS, and JavaScript assets
 - simulation-backed PLC adapter so the app can run before real PLC
   integration is finished
 - OPC UA and Modbus adapter scaffolding for future plant connectivity
-- browser operator panel for temperature zones, screw speed, alarms, and
-  live process metrics
+- browser operator panel for commands, manual recipes, zones, alarms,
+  commissioning, analytics, and recent events
 - built-in commissioning panel for PLC connection diagnostics and OPC UA
   node browsing
 - telemetry and event logging into `runtime_logs/`
+- response hardening via security headers, cache-control, GZip, trusted-host
+  support, and configurable CORS
 
 ### Run the operator app
 
@@ -150,12 +155,40 @@ python run_app.py
 
 Then open `http://127.0.0.1:8000`.
 
+### Production highlights
+
+- single aggregated dashboard endpoint at `GET /api/dashboard` to reduce
+  polling overhead from the browser
+- liveness and readiness endpoints at `GET /api/health/live` and
+  `GET /api/health/ready`
+- `GET /api/meta` for app/environment metadata used by the frontend
+- downloadable production report export at
+  `GET /api/reports/production.csv`
+- optional HTTP Basic authentication for the web UI and API
+- production TLS termination with the bundled `Caddyfile` and
+  `docker-compose.production.yml`
+- command endpoints return `503` when the active PLC adapter rejects a
+  command instead of silently reporting success
+- Docker image includes a health check and runs as a non-root user
+
 ### Runtime configuration
 
 The application reads environment variables for runtime behavior:
 
+- `EXTRUDER_APP_NAME`
+- `EXTRUDER_APP_ENV`
 - `EXTRUDER_APP_HOST`
 - `EXTRUDER_APP_PORT`
+- `EXTRUDER_DASHBOARD_REFRESH_MS`
+- `EXTRUDER_STATIC_CACHE_MAX_AGE_S`
+- `EXTRUDER_CORS_ALLOWED_ORIGINS`
+- `EXTRUDER_TRUSTED_HOSTS`
+- `EXTRUDER_AUTH_ENABLED`
+- `EXTRUDER_AUTH_USERNAME`
+- `EXTRUDER_AUTH_PASSWORD`
+- `EXTRUDER_AUTH_PASSWORD_SHA256`
+- `EXTRUDER_PUBLIC_DOMAIN`
+- `EXTRUDER_TLS_EMAIL`
 - `EXTRUDER_PLC_MODE` with values `simulation`, `opcua`, or `modbus`
 - `EXTRUDER_SCAN_INTERVAL_S`
 - `EXTRUDER_PERSIST_LOGS`
@@ -185,9 +218,55 @@ docker compose up --build
 
 The operator panel will be available at `http://127.0.0.1:8000`.
 
+For production behind a reverse proxy, keep the application as a single
+worker process so the background PLC polling loop only runs once per
+deployment instance.
+
+### Production HTTPS deployment
+
+1. Copy `.env.example` to `.env` and set:
+   `EXTRUDER_AUTH_ENABLED=true`, `EXTRUDER_AUTH_USERNAME`, either
+   `EXTRUDER_AUTH_PASSWORD` or `EXTRUDER_AUTH_PASSWORD_SHA256`,
+   `EXTRUDER_PUBLIC_DOMAIN`, and `EXTRUDER_TLS_EMAIL`.
+2. Point your public DNS record at the host that will run Docker.
+3. Start the production stack with:
+
+```bash
+docker compose -f docker-compose.production.yml up --build -d
+```
+
+This stack keeps the FastAPI app internal on the Docker network and
+publishes only the Caddy reverse proxy on ports `80` and `443`. Caddy
+automatically provisions and renews TLS certificates for the configured
+domain.
+
+To generate a SHA-256 password digest for `EXTRUDER_AUTH_PASSWORD_SHA256`:
+
+```bash
+python generate_auth_hash.py
+```
+
+Or provide the password inline:
+
+```bash
+python generate_auth_hash.py your-password
+```
+
+Before starting the production stack, run the local preflight checker:
+
+```bash
+python check_production_config.py
+```
+
 ### API endpoints
 
+- `GET /api/meta`
+- `GET /api/runtime`
+- `GET /api/health`
+- `GET /api/health/live`
+- `GET /api/health/ready`
 - `GET /api/status`
+- `GET /api/dashboard`
 - `GET /api/connection`
 - `GET /api/connection/browse`
 - `GET /api/recipes`
@@ -203,6 +282,52 @@ The operator panel will be available at `http://127.0.0.1:8000`.
 - `POST /api/commands/reset`
 - `POST /api/commands/emergency-stop`
 - `POST /api/commands/acknowledge-alarms`
+
+When authentication is enabled, all routes except the health endpoints
+require HTTP Basic credentials.
+
+### Vercel frontend deployment
+
+Use Vercel only for the operator dashboard frontend, not for the PLC
+backend. The FastAPI backend keeps a long-running background poller and
+industrial network connectivity, so it should stay on your VM or
+container host near the plant network.
+
+This repository now includes a Vercel-ready frontend in [`frontend/`](/C:/Users/PC/OneDrive/Documents/GitHub/PLC-Extruder-project/frontend):
+
+- `frontend/index.html`, `frontend/styles.css`, and `frontend/app.js`
+  contain the operator dashboard
+- `frontend/api/[...path].js` is a Vercel serverless proxy that forwards
+  `/api/*` requests to your self-hosted backend
+- `frontend/vercel.json` configures the proxy function and response
+  headers
+
+#### Recommended split architecture
+
+1. Deploy the backend using the production Docker stack in this repo.
+2. Deploy only the `frontend/` directory to Vercel.
+3. Point the Vercel proxy at your backend HTTPS URL.
+
+#### Vercel project setup
+
+1. Import this repository into Vercel.
+2. Set the project Root Directory to `frontend`.
+3. Add these Vercel environment variables:
+   `EXTRUDER_BACKEND_URL`
+   `EXTRUDER_BACKEND_USERNAME`
+   `EXTRUDER_BACKEND_PASSWORD`
+4. Deploy.
+
+Example values:
+
+- `EXTRUDER_BACKEND_URL=https://extruder.example.com`
+- `EXTRUDER_BACKEND_USERNAME=operator`
+- `EXTRUDER_BACKEND_PASSWORD=<your backend basic auth password>`
+
+The browser will call same-origin `/api/*` on Vercel, and the proxy
+function will attach backend credentials server-side. That keeps the
+backend password out of the shipped frontend bundle and avoids browser
+CORS configuration.
 
 ### Current integration status
 

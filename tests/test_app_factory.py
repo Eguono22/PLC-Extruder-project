@@ -60,9 +60,26 @@ class TestApplicationFactory:
         monkeypatch.setenv("EXTRUDER_MODBUS_COMMAND_COIL_MAP_JSON", '{"start":12}')
         monkeypatch.setenv("EXTRUDER_MODBUS_STATUS_REGISTER_MAP_JSON", '{"motor_rpm":30}')
         monkeypatch.setenv("EXTRUDER_MODBUS_COMMAND_REGISTER_MAP_JSON", '{"die_sp":10}')
+        monkeypatch.setenv("EXTRUDER_CORS_ALLOWED_ORIGINS", "https://ops.example.com, https://line2.example.com")
+        monkeypatch.setenv("EXTRUDER_TRUSTED_HOSTS", "ops.example.com,localhost")
+        monkeypatch.setenv("EXTRUDER_AUTH_ENABLED", "true")
+        monkeypatch.setenv("EXTRUDER_AUTH_USERNAME", "operator")
+        monkeypatch.setenv("EXTRUDER_AUTH_PASSWORD_SHA256", "abc123")
+        monkeypatch.setenv("EXTRUDER_PUBLIC_DOMAIN", "extruder.example.com")
+        monkeypatch.setenv("EXTRUDER_TLS_EMAIL", "ops@example.com")
 
         settings = AppSettings.from_env()
 
         assert settings.modbus_command_coil_map["start"] == 12
         assert settings.modbus_status_register_map["motor_rpm"] == 30
         assert settings.modbus_command_register_map["die_sp"] == 10
+        assert settings.cors_allowed_origins == [
+            "https://ops.example.com",
+            "https://line2.example.com",
+        ]
+        assert settings.trusted_hosts == ["ops.example.com", "localhost"]
+        assert settings.auth_enabled is True
+        assert settings.auth_username == "operator"
+        assert settings.auth_password_sha256_value == "abc123"
+        assert settings.public_domain == "extruder.example.com"
+        assert settings.tls_email == "ops@example.com"
