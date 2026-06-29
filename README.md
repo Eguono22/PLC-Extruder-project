@@ -123,16 +123,19 @@ python -m pytest tests/ -v
 
 ## Web Application
 
-The repository now includes a production-oriented web application layer
+The repository now includes a production-oriented automation and web HMI layer
 for an extruder line:
 
-- FastAPI backend with lifecycle-managed service startup and structured API models
+- FastAPI backend acting as a supervisory automation/HMI service
 - production web dashboard with separate HTML, CSS, and JavaScript assets
 - simulation-backed PLC adapter so the app can run before real PLC
   integration is finished
 - OPC UA and Modbus adapter scaffolding for future plant connectivity
 - browser operator panel for commands, manual recipes, zones, alarms,
   commissioning, analytics, and recent events
+- explicit automation overview for lifecycle phase, permissives, start readiness,
+  and operator next action
+- supervisory operating modes for `auto`, `manual`, and `maintenance`
 - built-in commissioning panel for PLC connection diagnostics and OPC UA
   node browsing
 - telemetry and event logging into `runtime_logs/`
@@ -165,6 +168,7 @@ Then open `http://127.0.0.1:8000`.
 - downloadable production report export at
   `GET /api/reports/production.csv`
 - optional HTTP Basic authentication for the web UI and API
+- `GET /api/automation/overview` for a web-HMI summary of the automated line
 - production TLS termination with the bundled `Caddyfile` and
   `docker-compose.production.yml`
 - command endpoints return `503` when the active PLC adapter rejects a
@@ -224,7 +228,7 @@ deployment instance.
 
 ### Production HTTPS deployment
 
-1. Copy `.env.example` to `.env` and set:
+1. Copy `.env.example` to `.env.production` and set:
    `EXTRUDER_AUTH_ENABLED=true`, `EXTRUDER_AUTH_USERNAME`, either
    `EXTRUDER_AUTH_PASSWORD` or `EXTRUDER_AUTH_PASSWORD_SHA256`,
    `EXTRUDER_PUBLIC_DOMAIN`, and `EXTRUDER_TLS_EMAIL`.
@@ -258,9 +262,14 @@ Before starting the production stack, run the local preflight checker:
 python check_production_config.py
 ```
 
+By default, the production compose file and preflight checker read
+`.env.production` so your development `.env` can stay untouched.
+
 ### API endpoints
 
 - `GET /api/meta`
+- `GET /api/operation-mode`
+- `PUT /api/operation-mode`
 - `GET /api/runtime`
 - `GET /api/health`
 - `GET /api/health/live`
@@ -289,9 +298,10 @@ require HTTP Basic credentials.
 ### Vercel frontend deployment
 
 Use Vercel only for the operator dashboard frontend, not for the PLC
-backend. The FastAPI backend keeps a long-running background poller and
-industrial network connectivity, so it should stay on your VM or
-container host near the plant network.
+backend. The FastAPI backend is the supervisory automation/HMI service:
+it keeps a long-running background poller and industrial network
+connectivity, so it should stay on your VM or container host near the
+plant network.
 
 This repository now includes a Vercel-ready frontend in [`frontend/`](/C:/Users/PC/OneDrive/Documents/GitHub/PLC-Extruder-project/frontend):
 

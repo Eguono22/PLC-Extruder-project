@@ -44,4 +44,5 @@ def create_service(settings: AppSettings) -> ExtruderApplicationService:
             persist_to_disk=settings.persist_logs,
         ),
         scan_interval_s=settings.scan_interval_s,
+        system_name=settings.app_name,
     )

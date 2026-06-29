@@ -323,6 +323,24 @@ input {
   margin-top: 18px;
 }
 
+.automation-panel {
+  margin-top: 20px;
+  display: grid;
+  gap: 14px;
+}
+
+.section-head.compact {
+  margin-bottom: 0;
+}
+
+.compact-grid {
+  gap: 10px;
+}
+
+.compact-stack {
+  max-height: none;
+}
+
 .bar-label {
   display: flex;
   justify-content: space-between;

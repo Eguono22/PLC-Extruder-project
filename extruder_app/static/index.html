@@ -3,8 +3,8 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>Extruder Web Platform</title>
-  <meta name="description" content="Production-ready web operations panel for an industrial extruder line.">
+  <title>Automated Extruder System</title>
+  <meta name="description" content="Web HMI for an automated industrial extruder system.">
   <link rel="stylesheet" href="/static/styles.css">
   <script src="/static/app.js" defer></script>
 </head>
@@ -14,8 +14,8 @@
     <section class="masthead card">
       <div>
         <p class="eyebrow">Production Control Surface</p>
-        <h1 id="appTitle">Extruder Web Platform</h1>
-        <p class="lede">Supervise line state, recipes, alarms, commissioning, and production telemetry from one operator dashboard.</p>
+        <h1 id="appTitle">Automated Extruder System</h1>
+        <p class="lede">Operate the automated line from a browser HMI with machine state, permissives, recipes, alarms, commissioning, and production telemetry in one place.</p>
       </div>
       <div class="masthead-status">
         <div class="status-pill" id="appEnvironment">Loading environment</div>
@@ -135,6 +135,50 @@
             <div class="bar-label"><span>Motor current</span><span id="motorCurrentValue">-</span></div>
             <div class="bar-track"><div class="bar-fill rust" id="currentBar"></div></div>
           </div>
+        </div>
+        <div class="automation-panel">
+          <div class="section-head compact">
+            <div>
+              <p class="eyebrow">Automation HMI</p>
+              <h2>Automatic sequence status</h2>
+            </div>
+            <div class="status-pill neutral" id="automationMode">-</div>
+          </div>
+          <div class="inline-field">
+            <select id="operationModeSelect">
+              <option value="auto">Auto</option>
+              <option value="manual">Manual</option>
+              <option value="maintenance">Maintenance</option>
+            </select>
+            <button class="button dark" id="applyModeButton" type="button">Apply mode</button>
+          </div>
+          <div class="metric-grid compact-grid">
+            <div class="metric">
+              <span>Lifecycle phase</span>
+              <strong id="automationPhase">-</strong>
+            </div>
+            <div class="metric">
+              <span>Ready for start</span>
+              <strong id="automationReady">-</strong>
+            </div>
+            <div class="metric">
+              <span>Permissives</span>
+              <strong id="automationPermissives">-</strong>
+            </div>
+            <div class="metric">
+              <span>PLC link</span>
+              <strong id="automationLink">-</strong>
+            </div>
+          </div>
+          <div class="analytics-list">
+            <div class="data-row"><span>Next operator action</span><strong id="automationNextAction">-</strong></div>
+            <div class="data-row"><span>Commands</span><strong id="automationCommands">-</strong></div>
+            <div class="data-row"><span>Thermal readiness</span><strong id="automationThermal">-</strong></div>
+            <div class="data-row"><span>Active alarms</span><strong id="automationAlarmCount">-</strong></div>
+            <div class="data-row"><span>Mode changes</span><strong id="operationModeChangeState">-</strong></div>
+          </div>
+          <div class="stack-list compact-stack" id="operationModeNotes"></div>
+          <div class="stack-list compact-stack" id="automationNotes"></div>
         </div>
       </article>
     </section>

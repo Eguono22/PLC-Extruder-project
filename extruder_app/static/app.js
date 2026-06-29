@@ -14,6 +14,23 @@ function setStatus(message, variant = "neutral") {
   banner.className = `status-banner ${variant}`;
 }
 
+function setCommandButtonsEnabled(automation) {
+  document.querySelectorAll("[data-command]").forEach((button) => {
+    const endpoint = button.dataset.command;
+    let enabled = true;
+    if (endpoint === "/api/commands/start") {
+      enabled = Boolean(automation.can_start);
+    } else if (endpoint === "/api/commands/stop") {
+      enabled = Boolean(automation.can_stop);
+    } else if (endpoint === "/api/commands/reset") {
+      enabled = Boolean(automation.can_reset);
+    } else if (endpoint === "/api/commands/acknowledge-alarms") {
+      enabled = Boolean(automation.active_alarm_count > 0);
+    }
+    button.disabled = !enabled;
+  });
+}
+
 async function fetchJson(url, options) {
   const response = await fetch(url, options);
   if (response.ok) {
@@ -163,6 +180,46 @@ function renderConnection(connection) {
   $("connectionError").textContent = connection.last_error || "No adapter error";
 }
 
+function renderAutomation(automation) {
+  $("automationMode").textContent = `${automation.supervisory_mode} mode`;
+  $("automationMode").className = `status-pill ${automation.auto_sequence_active ? "" : "neutral"}`.trim();
+  $("automationPhase").textContent = automation.lifecycle_phase;
+  $("automationReady").textContent = automation.ready_for_start ? "Ready" : "Not ready";
+  $("automationPermissives").textContent = automation.permissives_ok ? "Healthy" : "Blocked";
+  $("automationLink").textContent = automation.plc_connected ? "Connected" : "Offline";
+  $("automationNextAction").textContent = automation.next_operator_action;
+  $("automationCommands").textContent = [
+    automation.can_start ? "Start" : null,
+    automation.can_stop ? "Stop" : null,
+    automation.can_reset ? "Reset" : null,
+    automation.can_apply_recipe ? "Apply recipe" : null,
+  ].filter(Boolean).join(" / ") || "No commands currently available";
+  $("automationThermal").textContent = automation.heaters_ready && automation.die_ready
+    ? "Barrel and die at setpoint"
+    : "Warm-up still in progress";
+  $("automationAlarmCount").textContent = `${automation.active_alarm_count}`;
+  $("automationNotes").innerHTML = (automation.notes || []).map((note) => `
+    <article class="stack-item">
+      <div class="caption">${note}</div>
+    </article>
+  `).join("");
+  setCommandButtonsEnabled(automation);
+}
+
+function renderOperationMode(operationMode) {
+  $("operationModeSelect").value = operationMode.mode;
+  $("operationModeSelect").disabled = !operationMode.can_change_mode;
+  $("applyModeButton").disabled = !operationMode.can_change_mode;
+  $("operationModeChangeState").textContent = operationMode.can_change_mode
+    ? "Allowed now"
+    : "Only in idle or E-stop";
+  $("operationModeNotes").innerHTML = (operationMode.notes || []).map((note) => `
+    <article class="stack-item">
+      <div class="caption">${note}</div>
+    </article>
+  `).join("");
+}
+
 function renderMachine(machine, analytics, runtime) {
   const stateClass = String(machine.state || "unknown").toLowerCase();
   $("machineState").textContent = machine.state;
@@ -259,6 +316,17 @@ async function sendCommand(endpoint) {
   await refreshDashboard();
 }
 
+async function applyOperationMode() {
+  const mode = $("operationModeSelect").value;
+  const result = await fetchJson("/api/operation-mode", {
+    method: "PUT",
+    headers: {"Content-Type": "application/json"},
+    body: JSON.stringify({mode}),
+  });
+  setStatus(`Switched supervisory mode to ${result.mode}`, "success");
+  await refreshDashboard();
+}
+
 async function refreshBrowse() {
   const nodeId = $("browseNodeId").value.trim();
   const url = nodeId
@@ -272,6 +340,8 @@ async function refreshBrowse() {
 async function refreshDashboard() {
   const dashboard = await fetchJson("/api/dashboard");
   renderMachine(dashboard.machine, dashboard.analytics, dashboard.runtime);
+  renderAutomation(dashboard.automation);
+  renderOperationMode(dashboard.operation_mode);
   renderAlarms(dashboard.alarms);
   renderConnection(dashboard.connection);
   renderEvents(dashboard.events);
@@ -312,6 +382,14 @@ function bindEvents() {
   $("browseButton").addEventListener("click", async () => {
     try {
       await refreshBrowse();
+    } catch (error) {
+      setStatus(error.message, "error");
+    }
+  });
+
+  $("applyModeButton").addEventListener("click", async () => {
+    try {
+      await applyOperationMode();
     } catch (error) {
       setStatus(error.message, "error");
     }

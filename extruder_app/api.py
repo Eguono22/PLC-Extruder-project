@@ -21,6 +21,7 @@ from extruder_app.models import (
     ActiveRecipeUpdate,
     AlarmItem,
     AnalyticsSummary,
+    AutomationOverview,
     AppMetadata,
     CommandResponse,
     ConnectionStatus,
@@ -28,6 +29,8 @@ from extruder_app.models import (
     EventItem,
     HealthStatus,
     MachineStatus,
+    OperationModeStatus,
+    OperationModeUpdate,
     OpcUaBrowseItem,
     ProductionReport,
     RecipeDefinition,
@@ -35,7 +38,7 @@ from extruder_app.models import (
     TrendPoint,
 )
 from extruder_app.production import DEFAULT_PASSWORD_PLACEHOLDER
-from extruder_app.service import ExtruderApplicationService
+from extruder_app.service import ExtruderApplicationService, OperationModeRejectedError
 from extruder_app.settings import AppSettings
 
 
@@ -254,6 +257,26 @@ def create_app(
     def get_status(request: Request) -> MachineStatus:
         return MachineStatus.model_validate(_service(request).machine_status())
 
+    @app.get("/api/operation-mode", response_model=OperationModeStatus)
+    def get_operation_mode(request: Request) -> OperationModeStatus:
+        return OperationModeStatus.model_validate(_service(request).operation_mode_status())
+
+    @app.put("/api/operation-mode", response_model=OperationModeStatus)
+    def set_operation_mode(
+        request: Request,
+        update: OperationModeUpdate,
+    ) -> OperationModeStatus:
+        try:
+            return OperationModeStatus.model_validate(
+                _service(request).set_operation_mode(update.mode)
+            )
+        except (ValueError, OperationModeRejectedError) as exc:
+            raise HTTPException(status_code=409, detail=str(exc)) from exc
+
+    @app.get("/api/automation/overview", response_model=AutomationOverview)
+    def get_automation_overview(request: Request) -> AutomationOverview:
+        return AutomationOverview.model_validate(_service(request).automation_overview())
+
     @app.get("/api/dashboard", response_model=DashboardSnapshot)
     def get_dashboard(request: Request, event_limit: int = 12) -> DashboardSnapshot:
         return DashboardSnapshot.model_validate(
@@ -270,7 +293,10 @@ def create_app(
 
     @app.put("/api/recipes/active", response_model=RecipeDefinition)
     def set_active_recipe(request: Request, recipe: ActiveRecipeUpdate) -> RecipeDefinition:
-        return _service(request).apply_recipe(recipe)
+        try:
+            return _service(request).apply_recipe(recipe)
+        except OperationModeRejectedError as exc:
+            raise HTTPException(status_code=409, detail=str(exc)) from exc
 
     @app.get("/api/alarms", response_model=List[AlarmItem])
     def get_alarms(request: Request) -> List[AlarmItem]:
@@ -333,11 +359,14 @@ def create_app(
 
     @app.post("/api/commands/start", response_model=CommandResponse)
     def start_machine(request: Request) -> CommandResponse:
-        return _command_result(
-            _service(request).start_machine(),
-            accepted_message="Start command processed",
-            rejected_message="Start command rejected by the active PLC adapter",
-        )
+        try:
+            return _command_result(
+                _service(request).start_machine(),
+                accepted_message="Start command processed",
+                rejected_message="Start command rejected by the active PLC adapter",
+            )
+        except OperationModeRejectedError as exc:
+            raise HTTPException(status_code=409, detail=str(exc)) from exc
 
     @app.post("/api/commands/stop", response_model=CommandResponse)
     def stop_machine(request: Request) -> CommandResponse:

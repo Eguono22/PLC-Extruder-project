@@ -8,9 +8,17 @@ import threading
 import time
 from typing import Dict, List, Optional
 
+from extruder_app.automation import build_automation_overview
 from extruder_app.logging_store import TelemetryStore
 from extruder_app.models import ActiveRecipeUpdate, RecipeDefinition, ZoneSetpoints
 from extruder_app.plc_adapters import BasePlcAdapter, SimulationPlcAdapter
+
+
+VALID_OPERATION_MODES = ("auto", "manual", "maintenance")
+
+
+class OperationModeRejectedError(RuntimeError):
+    """Raised when a requested action is not allowed in the current mode."""
 
 
 class ExtruderApplicationService:
@@ -21,10 +29,13 @@ class ExtruderApplicationService:
         adapter: Optional[BasePlcAdapter] = None,
         telemetry: Optional[TelemetryStore] = None,
         scan_interval_s: float = 0.1,
+        system_name: str = "Automated Extruder System",
     ) -> None:
         self._adapter = adapter or SimulationPlcAdapter()
         self._telemetry = telemetry or TelemetryStore()
         self._scan_interval_s = scan_interval_s
+        self._system_name = system_name
+        self._operation_mode = "auto"
         self._lock = threading.RLock()
         self._stop_event = threading.Event()
         self._thread: Optional[threading.Thread] = None
@@ -87,6 +98,10 @@ class ExtruderApplicationService:
     def apply_recipe(self, recipe: ActiveRecipeUpdate) -> RecipeDefinition:
         """Apply a built-in or custom recipe."""
         with self._lock:
+            if self._operation_mode == "maintenance":
+                raise OperationModeRejectedError(
+                    "Recipe changes are disabled while the line is in maintenance mode."
+                )
             if recipe.recipe_id and recipe.recipe_id in self._recipes:
                 selected = self._recipes[recipe.recipe_id]
             else:
@@ -118,6 +133,10 @@ class ExtruderApplicationService:
 
     def start_machine(self) -> bool:
         with self._lock:
+            if self._operation_mode != "auto":
+                raise OperationModeRejectedError(
+                    "Automatic start is available only when the line is in auto mode."
+                )
             result = self._adapter.start()
             self._telemetry.record_event("start_command", {"accepted": result})
             return result
@@ -210,6 +229,72 @@ class ExtruderApplicationService:
         """Return PLC adapter diagnostics."""
         return self._adapter.diagnostics()
 
+    def operation_mode_status(self) -> Dict[str, object]:
+        """Return the supervisory operating mode and permissions."""
+        with self._lock:
+            machine_state = str(self._adapter.status_snapshot().get("state", "UNKNOWN"))
+            can_change_mode = machine_state in {"IDLE", "EMERGENCY_STOP"}
+            automatic_commands_enabled = self._operation_mode == "auto"
+            recipe_edits_enabled = self._operation_mode != "maintenance"
+            notes: List[str] = []
+            if self._operation_mode == "auto":
+                notes.append("Auto mode enables the full automatic startup and production sequence.")
+            elif self._operation_mode == "manual":
+                notes.append(
+                    "Manual mode keeps commissioning access available but blocks automatic starts."
+                )
+            else:
+                notes.append(
+                    "Maintenance mode locks production starts and recipe edits while work is performed."
+                )
+            if not can_change_mode:
+                notes.append("Mode changes are allowed only while the machine is idle or in emergency stop.")
+            return {
+                "mode": self._operation_mode,
+                "available_modes": list(VALID_OPERATION_MODES),
+                "can_change_mode": can_change_mode,
+                "automatic_commands_enabled": automatic_commands_enabled,
+                "recipe_edits_enabled": recipe_edits_enabled,
+                "maintenance_lockout": self._operation_mode == "maintenance",
+                "notes": notes,
+            }
+
+    def set_operation_mode(self, mode: str) -> Dict[str, object]:
+        """Change the supervisory operating mode when the machine is safe to reconfigure."""
+        normalized = mode.strip().lower()
+        if normalized not in VALID_OPERATION_MODES:
+            raise ValueError(
+                "Unsupported operating mode. Use one of: auto, manual, maintenance."
+            )
+        with self._lock:
+            machine_state = str(self._adapter.status_snapshot().get("state", "UNKNOWN"))
+            if machine_state not in {"IDLE", "EMERGENCY_STOP"}:
+                raise OperationModeRejectedError(
+                    "Operating mode can be changed only while the machine is idle or in emergency stop."
+                )
+            previous_mode = self._operation_mode
+            self._operation_mode = normalized
+            if previous_mode != normalized:
+                self._telemetry.record_event(
+                    "operation_mode_changed",
+                    {"from": previous_mode, "to": normalized},
+                )
+            return self.operation_mode_status()
+
+    def automation_overview(self) -> Dict[str, object]:
+        """Return a high-level automation/HMI summary for the machine."""
+        machine = self.machine_status()
+        runtime = self.runtime_status()
+        connection = self.connection_status()
+        operation_mode = self.operation_mode_status()
+        return build_automation_overview(
+            system_name=self._system_name,
+            machine=machine,
+            runtime=runtime,
+            connection=connection,
+            operation_mode=operation_mode,
+        )
+
     def browse_connection_nodes(self, node_id: Optional[str] = None) -> List[Dict[str, str]]:
         """Browse PLC nodes for commissioning."""
         return self._adapter.browse_nodes(node_id=node_id)
@@ -222,6 +307,8 @@ class ExtruderApplicationService:
         """Return a single payload tailored for the operator dashboard."""
         return {
             "machine": self.machine_status(),
+            "automation": self.automation_overview(),
+            "operation_mode": self.operation_mode_status(),
             "alarms": self.active_alarms(),
             "analytics": self.analytics_summary(),
             "connection": self.connection_status(),

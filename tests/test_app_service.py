@@ -18,6 +18,12 @@ def _make_service() -> ExtruderApplicationService:
 
 
 class TestExtruderApplicationService:
+    def test_default_operation_mode_is_auto(self):
+        service = _make_service()
+        status = service.operation_mode_status()
+        assert status["mode"] == "auto"
+        assert status["automatic_commands_enabled"] is True
+
     def test_default_recipe_loaded(self):
         service = _make_service()
         recipe = service.active_recipe()
@@ -78,6 +84,47 @@ class TestExtruderApplicationService:
         diagnostics = service.connection_status()
         assert diagnostics["plc_mode"] == "simulation"
         assert diagnostics["connected"] is True
+
+    def test_automation_overview_exposes_auto_mode(self):
+        service = _make_service()
+        overview = service.automation_overview()
+        assert overview["system_type"] == "automated-extruder-system"
+        assert overview["supervisory_mode"] == "auto"
+        assert overview["can_apply_recipe"] is True
+        assert overview["runtime_ready"] is False
+
+    def test_manual_mode_blocks_automatic_start(self):
+        service = _make_service()
+        service.set_operation_mode("manual")
+
+        try:
+            service.start_machine()
+        except Exception as exc:
+            assert "auto mode" in str(exc)
+        else:
+            raise AssertionError("Expected manual mode to block automatic start")
+
+    def test_maintenance_mode_blocks_recipe_changes(self):
+        service = _make_service()
+        service.set_operation_mode("maintenance")
+
+        try:
+            service.apply_recipe(ActiveRecipeUpdate(recipe_id="general-purpose"))
+        except Exception as exc:
+            assert "maintenance mode" in str(exc)
+        else:
+            raise AssertionError("Expected maintenance mode to block recipe changes")
+
+    def test_cannot_change_mode_while_running_sequence(self):
+        service = _make_service()
+        service.start_machine()
+
+        try:
+            service.set_operation_mode("manual")
+        except Exception as exc:
+            assert "idle or in emergency stop" in str(exc)
+        else:
+            raise AssertionError("Expected mode change to be rejected while startup is active")
 
     def test_browse_connection_nodes_uses_adapter_support(self):
         service = _make_service()

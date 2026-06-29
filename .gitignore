@@ -30,3 +30,7 @@ runtime_logs/
 
 # Local environment
 .env
+.env.local
+.env.production
+.env.production.local
+.vercel/

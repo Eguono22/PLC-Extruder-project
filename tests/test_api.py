@@ -51,9 +51,48 @@ def test_dashboard_endpoint_returns_aggregated_payload():
     assert response.status_code == 200
     payload = response.json()
     assert payload["machine"]["plc_mode"] == "simulation"
+    assert payload["automation"]["system_type"] == "automated-extruder-system"
     assert "analytics" in payload
     assert "runtime" in payload
     assert response.headers["cache-control"] == "no-store"
+
+
+def test_automation_overview_endpoint_returns_hmi_summary():
+    with _make_client() as client:
+        response = client.get("/api/automation/overview")
+
+    assert response.status_code == 200
+    payload = response.json()
+    assert payload["supervisory_mode"] == "auto"
+    assert "next_operator_action" in payload
+
+
+def test_operation_mode_endpoint_returns_current_mode():
+    with _make_client() as client:
+        response = client.get("/api/operation-mode")
+
+    assert response.status_code == 200
+    assert response.json()["mode"] == "auto"
+
+
+def test_operation_mode_endpoint_accepts_manual_mode_switch():
+    with _make_client() as client:
+        response = client.put("/api/operation-mode", json={"mode": "manual"})
+
+    assert response.status_code == 200
+    payload = response.json()
+    assert payload["mode"] == "manual"
+    assert payload["automatic_commands_enabled"] is False
+
+
+def test_start_command_is_blocked_in_manual_mode():
+    with _make_client() as client:
+        mode_response = client.put("/api/operation-mode", json={"mode": "manual"})
+        assert mode_response.status_code == 200
+        response = client.post("/api/commands/start")
+
+    assert response.status_code == 409
+    assert "auto mode" in response.json()["detail"]
 
 
 def test_meta_endpoint_exposes_frontend_configuration():
@@ -86,7 +125,7 @@ def test_root_serves_web_application_with_security_headers():
         response = client.get("/")
 
     assert response.status_code == 200
-    assert "Extruder Web Platform" in response.text
+    assert "Automated Extruder System" in response.text
     assert response.headers["cache-control"] == "no-cache"
     assert "default-src 'self'" in response.headers["content-security-policy"]
 

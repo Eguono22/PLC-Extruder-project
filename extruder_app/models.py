@@ -117,6 +117,24 @@ class AppMetadata(BaseModel):
     dashboard_refresh_ms: int
 
 
+class OperationModeStatus(BaseModel):
+    """Supervisory operating mode and mode-specific permissions."""
+
+    mode: str
+    available_modes: List[str]
+    can_change_mode: bool
+    automatic_commands_enabled: bool
+    recipe_edits_enabled: bool
+    maintenance_lockout: bool
+    notes: List[str]
+
+
+class OperationModeUpdate(BaseModel):
+    """Request payload for changing the supervisory operating mode."""
+
+    mode: str = Field(pattern="^(auto|manual|maintenance)$")
+
+
 class TrendPoint(BaseModel):
     """Single time-series point for trend widgets."""
 
@@ -167,6 +185,8 @@ class DashboardSnapshot(BaseModel):
     """Aggregated dashboard payload for the operator web UI."""
 
     machine: MachineStatus
+    automation: "AutomationOverview"
+    operation_mode: OperationModeStatus
     alarms: List[AlarmItem]
     analytics: AnalyticsSummary
     connection: ConnectionStatus
@@ -189,3 +209,30 @@ class MachineStatus(BaseModel):
     die: Dict[str, object]
     plc_mode: str
     active_recipe: RecipeDefinition
+
+
+class AutomationOverview(BaseModel):
+    """High-level automation/HMI summary for the extruder system."""
+
+    system_name: str
+    system_type: str
+    supervisory_mode: str
+    lifecycle_phase: str
+    ready_for_start: bool
+    auto_sequence_active: bool
+    plc_connected: bool
+    runtime_ready: bool
+    permissives_ok: bool
+    heaters_ready: bool
+    die_ready: bool
+    can_start: bool
+    can_stop: bool
+    can_reset: bool
+    can_apply_recipe: bool
+    active_recipe_name: str
+    active_alarm_count: int
+    next_operator_action: str
+    notes: List[str]
+
+
+DashboardSnapshot.model_rebuild()
